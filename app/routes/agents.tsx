@@ -141,14 +141,14 @@ function AgentForm({
 				<div>
 					<label className="text-sm font-medium text-kumo-default block mb-1">Provider</label>
 					<Select
-						value={providerId}
-			onValueChange={(v) => {
-						if (!v) return;
-						setProviderId(v);
-						const p = (providersData?.providers ?? []).find((pr) => pr.id === v);
-							if (p?.models[0]) setModelId(p.models[0].id);
-						}}
-					>
+				value={providerId}
+				onValueChange={(v) => {
+					if (!v) return;
+					setProviderId(v);
+					const p = (providersData?.providers ?? []).find((pr) => pr.id === v);
+					if (p?.models[0]) setModelId(p.models[0].id);
+				}}
+			>
 						{(providersData?.providers ?? []).map((p) => (
 							<Select.Option key={p.id} value={p.id}>
 								{p.name}{p.requiresKey && !p.hasKey ? " (no key)" : ""}

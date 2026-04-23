@@ -51,6 +51,25 @@ export function registerAgentsRoutes(app: Hono<MailboxContext>): void {
 		return c.json({ roles });
 	});
 
+	// ── Sender reports (must be before /:agentId to avoid shadowing) ────
+
+	// GET /api/plugins/agents/reports — list recent sender reports
+	app.get("/reports", async (c) => {
+		const limit = Number(c.req.query("limit") ?? 20);
+		const sql = await getSql(c);
+		const reports = listSenderReports(sql, limit);
+		return c.json({ reports });
+	});
+
+	// GET /api/plugins/agents/reports/:emailAddress
+	app.get("/reports/:emailAddress", async (c) => {
+		const emailAddress = decodeURIComponent(c.req.param("emailAddress"));
+		const sql = await getSql(c);
+		const report = getSenderReport(sql, emailAddress);
+		if (!report) return c.json({ error: "No report found for this sender" }, 404);
+		return c.json({ report });
+	});
+
 	// GET /api/plugins/agents/:agentId
 	app.get("/:agentId", async (c) => {
 		const agentId = c.req.param("agentId");
@@ -119,22 +138,4 @@ export function registerAgentsRoutes(app: Hono<MailboxContext>): void {
 		return c.json({ summary });
 	});
 
-	// ── Sender reports ────────────────────────────────────────────
-
-	// GET /api/plugins/agents/reports — list recent sender reports
-	app.get("/reports", async (c) => {
-		const limit = Number(c.req.query("limit") ?? 20);
-		const sql = await getSql(c);
-		const reports = listSenderReports(sql, limit);
-		return c.json({ reports });
-	});
-
-	// GET /api/plugins/agents/reports/:emailAddress
-	app.get("/reports/:emailAddress", async (c) => {
-		const emailAddress = decodeURIComponent(c.req.param("emailAddress"));
-		const sql = await getSql(c);
-		const report = getSenderReport(sql, emailAddress);
-		if (!report) return c.json({ error: "No report found for this sender" }, 404);
-		return c.json({ report });
-	});
 }
