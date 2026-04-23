@@ -1,7 +1,5 @@
 name: Deploy to Cloudflare Workers
 
-# Runs automatically on every push to main.
-# Can also be triggered manually from the Actions tab.
 on:
   push:
     branches:
@@ -35,32 +33,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Runs cf-typegen (generates worker-configuration.d.ts from wrangler.jsonc)
+      # + react-router typegen (generates .react-router/types/**/*) + tsc -b
       - name: Type check
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Build
         run: npm run build
 
-      # Deploy the worker. DOMAINS comes from a GitHub Actions Variable (not a secret).
-      # This step always runs — POLICY_AUD / TEAM_DOMAIN are handled separately below.
+      # DOMAINS comes from a GitHub Actions Variable (Settings → Variables → Actions).
+      # Falls back to 'example.com' if not yet set — change it before first real deploy.
+      # POLICY_AUD and TEAM_DOMAIN are set once via: ./scripts/setup.sh --access
+      # They persist in the Worker and do not need to be reapplied on every deploy.
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy --var "DOMAINS:${{ vars.DOMAINS || 'example.com' }}"
-
-      # Set Cloudflare Access secrets — only runs once they are configured in GitHub.
-      # To configure: run ./scripts/setup.sh --access after enabling Access on the Worker.
-      - name: Set Access secrets
-        if: ${{ env.POLICY_AUD != '' && env.TEAM_DOMAIN != '' }}
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          secrets: |
-            POLICY_AUD
-            TEAM_DOMAIN
-        env:
-          POLICY_AUD: ${{ secrets.POLICY_AUD }}
-          TEAM_DOMAIN: ${{ secrets.TEAM_DOMAIN }}
