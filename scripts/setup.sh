@@ -57,26 +57,36 @@ if [[ "${1:-}" == "--access" ]]; then
   hdr "Setting Cloudflare Access secrets"
   echo ""
   echo "  In the Cloudflare dashboard:"
+  echo "  Zero Trust → Access → Applications — note your team domain"
   echo "  Workers & Pages → agentic-inbox → Settings → Domains & Routes → Enable Access"
-  echo "  The modal shows POLICY_AUD and TEAM_DOMAIN — copy them and paste below."
+  echo "  The modal shows the Audience Tag (POLICY_AUD) — copy it below."
   echo ""
   try_open "https://dash.cloudflare.com"
-  ask "POLICY_AUD (from Access modal):";  read -rs POLICY_AUD;  echo
+  ask "POLICY_AUD (Audience Tag from Access modal):";  read -rs POLICY_AUD;  echo
   [[ -z "$POLICY_AUD" ]] && die "POLICY_AUD cannot be empty"
-  ask "TEAM_DOMAIN (from Access modal):"; read -rs TEAM_DOMAIN; echo
+  ask "TEAM_DOMAIN (e.g. your-team.cloudflareaccess.com):"; read -rs TEAM_DOMAIN; echo
   [[ -z "$TEAM_DOMAIN" ]] && die "TEAM_DOMAIN cannot be empty"
   echo ""
-  gh secret set POLICY_AUD  --repo "$REPO" --body "$POLICY_AUD"  && ok "POLICY_AUD set"
-  gh secret set TEAM_DOMAIN --repo "$REPO" --body "$TEAM_DOMAIN" && ok "TEAM_DOMAIN set"
+
+  # Store in GitHub secrets — the deploy workflow re-applies them on every deploy
+  # so Access protection survives all future code pushes without any manual steps.
+  gh secret set POLICY_AUD  --repo "$REPO" --body "$POLICY_AUD"  && ok "POLICY_AUD saved to GitHub secrets"
+  gh secret set TEAM_DOMAIN --repo "$REPO" --body "$TEAM_DOMAIN" && ok "TEAM_DOMAIN saved to GitHub secrets"
+
+  # Trigger a deploy so the secrets are applied to the live Worker right now.
   if gh workflow run deploy.yml --repo "$REPO" 2>/dev/null; then
-    ok "Redeploy triggered → https://github.com/$REPO/actions"
+    ok "Deploy triggered — secrets will be live in ~1 min"
+    info "Watch: https://github.com/$REPO/actions"
   else
-    warn "Could not trigger workflow automatically — push any commit to redeploy"
+    warn "Could not trigger workflow automatically."
+    info "Push any commit (or run the workflow manually) to apply the secrets."
+    info "https://github.com/$REPO/actions → Deploy to Cloudflare Workers → Run workflow"
   fi
   echo ""
-  ok "Done. Your inbox is now protected by Cloudflare Access."
+  ok "Access secrets stored. From now on every deploy automatically re-applies them."
   exit 0
 fi
+
 
 # ── main setup: wire GitHub Actions CI/CD ─────────────────────────────────────
 echo ""
@@ -126,7 +136,12 @@ ok "Domain: $DOMAINS"
 # 5. Cloudflare API token
 hdr "Cloudflare API token"
 echo "  Create a token at: https://dash.cloudflare.com/profile/api-tokens"
-echo "  Use the template: Edit Cloudflare Workers"
+echo "  Required permissions (use a Custom Token):"
+echo "    • Account / Workers Scripts: Edit"
+echo "    • Account / Workers KV Storage: Edit  (if you use KV)"
+echo "    • Account / D1: Edit  (if you use D1)"
+echo "    • Zone / Workers Routes: Edit  (only if you use a custom domain)"
+echo "  The 'Edit Cloudflare Workers' template covers the first three."
 echo ""
 try_open "https://dash.cloudflare.com/profile/api-tokens"
 ask "Paste your Cloudflare API token:"; read -rs CLOUDFLARE_API_TOKEN; echo
@@ -146,7 +161,7 @@ hdr "Saving secrets to GitHub"
 gh secret set CLOUDFLARE_API_TOKEN  --repo "$REPO" --body "$CLOUDFLARE_API_TOKEN" && ok "CLOUDFLARE_API_TOKEN set"
 gh secret set CLOUDFLARE_ACCOUNT_ID --repo "$REPO" --body "$ACCOUNT_ID"           && ok "CLOUDFLARE_ACCOUNT_ID set"
 gh variable set DOMAINS             --repo "$REPO" --body "$DOMAINS"               && ok "DOMAINS variable set"
-warn "POLICY_AUD and TEAM_DOMAIN will be set after you enable Cloudflare Access (next step)"
+warn "POLICY_AUD and TEAM_DOMAIN will be set after you enable Cloudflare Access (step 2 below)"
 
 # 7. Trigger deploy
 hdr "First deploy"
@@ -162,14 +177,16 @@ echo ""
 echo "  ╔═══════════════════════════════════════════════════════════════╗"
 echo "  ║  CI/CD is live → https://github.com/$REPO/actions  "
 echo "  ║                                                               ║"
-echo "  ║  Two remaining steps in Cloudflare dashboard:                ║"
+echo "  ║  Two remaining steps in the Cloudflare dashboard:            ║"
 echo "  ║                                                               ║"
 echo "  ║  1. Email Routing: your domain → Email Routing               ║"
 echo "  ║     Add catch-all rule → Send to Worker → agentic-inbox      ║"
 echo "  ║                                                               ║"
-echo "  ║  2. Access: Workers & Pages → agentic-inbox                  ║"
-echo "  ║     Settings → Domains & Routes → Enable Access              ║"
-echo "  ║                                                               ║"
-echo "  ║  Then: ./scripts/setup.sh --access                           ║"
+echo "  ║  2. Access (optional but recommended):                       ║"
+echo "  ║     Workers & Pages → agentic-inbox → Settings               ║"
+echo "  ║     → Domains & Routes → Enable Access                       ║"
+echo "  ║     Then run: ./scripts/setup.sh --access                    ║"
+echo "  ║     This saves the secrets so every future deploy keeps      ║"
+echo "  ║     Access protection — no manual re-apply needed.           ║"
 echo "  ╚═══════════════════════════════════════════════════════════════╝"
 echo ""
