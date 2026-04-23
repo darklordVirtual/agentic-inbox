@@ -85,7 +85,7 @@ function AgentForm({
 	const [guardrails, setGuardrails] = useState(initial?.guardrails ?? EMPTY_GUARDRAILS);
 	const [saving, setSaving] = useState(false);
 
-	const selectedProvider = providersData?.providers.find((p) => p.id === providerId);
+	const selectedProvider = (providersData?.providers ?? []).find((p) => p.id === providerId);
 	const models = selectedProvider?.models ?? [];
 
 	const handleSave = async () => {
@@ -142,10 +142,10 @@ function AgentForm({
 					<label className="text-sm font-medium text-kumo-default block mb-1">Provider</label>
 					<Select
 						value={providerId}
-						onValueChange={(v) => {
-							if (!v) return;
-							setProviderId(v);
-							const p = providersData?.providers.find((pr) => pr.id === v);
+			onValueChange={(v) => {
+						if (!v) return;
+						setProviderId(v);
+						const p = (providersData?.providers ?? []).find((pr) => pr.id === v);
 							if (p?.models[0]) setModelId(p.models[0].id);
 						}}
 					>

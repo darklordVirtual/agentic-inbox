@@ -329,7 +329,7 @@ app.get("/api/v1/mailboxes/:mailboxId/plugins", async (c: AppContext) => {
 		enabled: state[p.manifest.id] !== false,
 		settingsSchema: p.manifest.settingsSchema ?? null,
 	}));
-	return c.json(plugins);
+	return c.json({ plugins });
 });
 
 app.put("/api/v1/mailboxes/:mailboxId/plugins/:pluginId", async (c: AppContext) => {
@@ -355,7 +355,7 @@ app.get("/api/v1/mailboxes/:mailboxId/providers", async (c: AppContext) => {
 		...p,
 		hasKey: configured.includes(p.id),
 	}));
-	return c.json(result);
+	return c.json({ providers: result });
 });
 
 app.put("/api/v1/mailboxes/:mailboxId/providers/:providerId", async (c: AppContext) => {

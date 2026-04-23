@@ -14,13 +14,14 @@ const PRIORITY_LABELS: Record<string, string> = {
 
 export default function DebtDashboard() {
 	const { mailboxId } = useParams<{ mailboxId: string }>();
-	const { data: cases = [], isLoading, error } = useDebtCases(mailboxId);
-
-	const open   = cases.filter((c) => c.status === "open" || c.status === "disputed");
-	const closed = cases.filter((c) => c.status === "paid" || c.status === "closed");
+	const { data, isLoading, error } = useDebtCases(mailboxId);
 
 	if (isLoading) return <div className="p-6 text-sm text-gray-500">Laster saker…</div>;
 	if (error)     return <div className="p-6 text-sm text-red-500">Feil ved henting av saker.</div>;
+
+	const cases  = Array.isArray(data) ? data : [];
+	const open   = cases.filter((c) => c.status === "open" || c.status === "disputed");
+	const closed = cases.filter((c) => c.status === "paid" || c.status === "closed");
 
 	return (
 		<div className="p-6 max-w-4xl mx-auto">
