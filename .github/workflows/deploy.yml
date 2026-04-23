@@ -8,11 +8,12 @@ on:
       - main
   workflow_dispatch:
 
+# Queue deploys — never cancel a running deploy.
 concurrency:
   group: deploy-production
-  cancel-in-progress: true
+  cancel-in-progress: false
 
-# Opt into Node.js 24 for all actions (Node.js 20 deprecated June 2026).
+# Force all actions to use Node.js 24 (Node.js 20 removed Sep 2026).
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -40,15 +41,23 @@ jobs:
       - name: Build
         run: npm run build
 
-      # All credentials come from GitHub Secrets — nothing sensitive is stored in the repo.
-      # DOMAINS is a non-sensitive GitHub Actions Variable (Settings → Variables → Actions).
-      # POLICY_AUD and TEAM_DOMAIN are set as Worker secrets via the 'secrets' input below.
+      # Deploy the worker. DOMAINS comes from a GitHub Actions Variable (not a secret).
+      # This step always runs — POLICY_AUD / TEAM_DOMAIN are handled separately below.
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --var "DOMAINS:${{ vars.DOMAINS }}"
+          command: deploy --var "DOMAINS:${{ vars.DOMAINS || 'example.com' }}"
+
+      # Set Cloudflare Access secrets — only runs once they are configured in GitHub.
+      # To configure: run ./scripts/setup.sh --access after enabling Access on the Worker.
+      - name: Set Access secrets
+        if: ${{ env.POLICY_AUD != '' && env.TEAM_DOMAIN != '' }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           secrets: |
             POLICY_AUD
             TEAM_DOMAIN
