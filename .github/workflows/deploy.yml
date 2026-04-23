@@ -61,10 +61,10 @@ jobs:
           TEAM_DOMAIN: ${{ secrets.TEAM_DOMAIN }}
         run: |
           if [ -n "$POLICY_AUD" ]; then
-            printf '%s' "$POLICY_AUD" | wrangler secret put POLICY_AUD
+            printf '%s' "$POLICY_AUD" | npx wrangler secret put POLICY_AUD
             echo "✓ POLICY_AUD applied"
           fi
           if [ -n "$TEAM_DOMAIN" ]; then
-            printf '%s' "$TEAM_DOMAIN" | wrangler secret put TEAM_DOMAIN
+            printf '%s' "$TEAM_DOMAIN" | npx wrangler secret put TEAM_DOMAIN
             echo "✓ TEAM_DOMAIN applied"
           fi
