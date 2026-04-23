@@ -54,7 +54,6 @@ jobs:
       # These are set once via: ./scripts/setup.sh --access
       # If the secrets are not yet configured (Access not enabled) this step is a no-op.
       - name: Apply Access secrets (if configured)
-        if: ${{ env.POLICY_AUD != '' || env.TEAM_DOMAIN != '' }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
