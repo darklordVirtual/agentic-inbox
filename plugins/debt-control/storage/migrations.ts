@@ -6,6 +6,17 @@ import type { Migration } from "../../../workers/durableObject/migrations";
  */
 export const debtControlMigrations: Migration[] = [
 	{
+		name: "debt_control_002_settings_v2",
+		sql: `
+ALTER TABLE dc_settings ADD COLUMN IF NOT EXISTS auto_draft_objection INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE dc_settings ADD COLUMN IF NOT EXISTS auto_draft_info_request INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE dc_settings ADD COLUMN IF NOT EXISTS enable_legality_check INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE dc_settings ADD COLUMN IF NOT EXISTS short_deadline_days INTEGER NOT NULL DEFAULT 7;
+ALTER TABLE dc_settings ADD COLUMN IF NOT EXISTS high_value_threshold_nok INTEGER NOT NULL DEFAULT 10000;
+ALTER TABLE dc_settings ADD COLUMN IF NOT EXISTS auto_escalate_court_letters INTEGER NOT NULL DEFAULT 1;
+		`,
+	},
+	{
 		name: "debt_control_001_initial",
 		sql: `
 -- Plugin settings (one row per plugin instance)

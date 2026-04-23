@@ -135,6 +135,21 @@ export interface PluginSettings {
 	bankProvider: "sparebank1" | "csv" | "none";
 	autoClassify: boolean;
 	autoReconcile: boolean;
+	// ── Draft & response behaviour ────────────────────────────────
+	/** Automatically generate a draft objection when classification confidence ≥ threshold */
+	autoDraftObjection: boolean;
+	/** Automatically draft a request-for-more-info when required fields are missing */
+	autoDraftInfoRequest: boolean;
+	// ── Legality & validation ─────────────────────────────────────
+	/** Run legality engine on every classified document */
+	enableLegalityCheck: boolean;
+	/** Flag documents with a deadline shorter than this many days */
+	shortDeadlineDays: number;
+	// ── Priority & alerts ─────────────────────────────────────────
+	/** Move cases to pay_now priority when amount exceeds this threshold (NOK) */
+	highValueThresholdNok: number;
+	/** Create high-priority cases for court letters automatically */
+	autoEscalateCourtLetters: boolean;
 }
 
 export interface SpareBank1Config {
