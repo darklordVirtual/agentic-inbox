@@ -5,9 +5,11 @@ import {
 	TrashIcon,
 	PencilSimpleIcon,
 	SpinnerGapIcon,
-	ArrowCounterClockwiseIcon,
-	ChartBarIcon,
 	IdentificationCardIcon,
+	BrainIcon,
+	ShieldIcon,
+	StarIcon,
+	WrenchIcon,
 } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useParams, NavLink } from "react-router";
@@ -60,7 +62,15 @@ const EMPTY_GUARDRAILS = {
 	requireSpamCheck: true,
 };
 
-// ── Agent form (create / edit) ─────────────────────────────────────
+// ── Agent form (create / edit) — tabbed ─────────────────────────
+
+type FormTab = "identity" | "model" | "guardrails";
+
+const TABS: { id: FormTab; label: string; icon: React.ReactNode }[] = [
+	{ id: "identity",   label: "Identity",   icon: <RobotIcon size={14} /> },
+	{ id: "model",      label: "Model",      icon: <BrainIcon size={14} /> },
+	{ id: "guardrails", label: "Guardrails", icon: <ShieldIcon size={14} /> },
+];
 
 function AgentForm({
 	mailboxId,
@@ -77,6 +87,7 @@ function AgentForm({
 	const createAgent = useCreateAgent(mailboxId);
 	const updateAgent = useUpdateAgent(mailboxId);
 
+	const [activeTab, setActiveTab] = useState<FormTab>("identity");
 	const [name, setName] = useState(initial?.name ?? "");
 	const [role, setRole] = useState<AgentRole>(initial?.role ?? "responder");
 	const [providerId, setProviderId] = useState(initial?.providerId ?? "cloudflare");
@@ -87,6 +98,7 @@ function AgentForm({
 
 	const selectedProvider = (providersData?.providers ?? []).find((p) => p.id === providerId);
 	const models = selectedProvider?.models ?? [];
+	const selectedModel = models.find((m) => m.id === modelId);
 
 	const handleSave = async () => {
 		if (!name.trim() || !role || !providerId || !modelId) return;
@@ -116,77 +128,188 @@ function AgentForm({
 	};
 
 	return (
-		<div className="space-y-5">
-			{/* Name */}
-			<div>
-				<label className="text-sm font-medium text-kumo-default block mb-1">Agent Name</label>
-				<Input value={name} onChange={(e) => setName(e.target.value)} placeholder="My Support Agent" />
+		<div className="flex flex-col gap-0">
+			{/* Tab bar */}
+			<div className="flex border-b border-kumo-line mb-5 -mx-1">
+				{TABS.map((tab) => (
+					<button
+						key={tab.id}
+						type="button"
+						onClick={() => setActiveTab(tab.id)}
+						className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px cursor-pointer ${
+							activeTab === tab.id
+								? "border-kumo-brand text-kumo-brand"
+								: "border-transparent text-kumo-subtle hover:text-kumo-default"
+						}`}
+					>
+						{tab.icon}
+						{tab.label}
+					</button>
+				))}
 			</div>
 
-			{/* Role */}
-			<div>
-				<label className="text-sm font-medium text-kumo-default block mb-1">Role</label>
-				<Select
-					value={role}
-					onValueChange={(v) => { if (v) setRole(v as AgentRole); }}
-				>
-					{(rolesData?.roles ?? []).map((r) => (
-						<Select.Option key={r.id} value={r.id}>{r.name} — {r.description}</Select.Option>
-					))}
-				</Select>
-			</div>
-
-			{/* Provider + Model */}
-			<div className="grid grid-cols-2 gap-3">
-				<div>
-					<label className="text-sm font-medium text-kumo-default block mb-1">Provider</label>
-					<Select
-				value={providerId}
-				onValueChange={(v) => {
-					if (!v) return;
-					setProviderId(v);
-					const p = (providersData?.providers ?? []).find((pr) => pr.id === v);
-					if (p?.models[0]) setModelId(p.models[0].id);
-				}}
-			>
-						{(providersData?.providers ?? []).map((p) => (
-							<Select.Option key={p.id} value={p.id}>
-								{p.name}{p.requiresKey && !p.hasKey ? " (no key)" : ""}
-							</Select.Option>
-						))}
-					</Select>
+			{/* Tab: Identity */}
+			{activeTab === "identity" && (
+				<div className="space-y-5">
+					<div>
+						<label className="text-sm font-medium text-kumo-default block mb-1">Agent Name</label>
+						<Input value={name} onChange={(e) => setName(e.target.value)} placeholder="My Support Agent" />
+					</div>
+					<div>
+						<label className="text-sm font-medium text-kumo-default block mb-1">Role</label>
+						<Select
+							value={role}
+							onValueChange={(v) => { if (v) setRole(v as AgentRole); }}
+						>
+							{(rolesData?.roles ?? []).map((r) => (
+								<Select.Option key={r.id} value={r.id}>{r.name} — {r.description}</Select.Option>
+							))}
+						</Select>
+						{role && (
+							<div className="mt-1.5">
+								<span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[role]}`}>
+									{(rolesData?.roles ?? []).find((r) => r.id === role)?.name ?? role}
+								</span>
+							</div>
+						)}
+					</div>
+					<div>
+						<label className="text-sm font-medium text-kumo-default block mb-1">
+							System Prompt Override{" "}
+							<span className="font-normal text-kumo-subtle">(optional)</span>
+						</label>
+						<Textarea
+							value={systemPrompt}
+							onChange={(e) => setSystemPrompt(e.target.value)}
+							placeholder="You are a helpful email assistant…"
+							rows={5}
+							className="font-mono text-sm"
+						/>
+						<p className="text-xs text-kumo-subtle mt-1">Leave blank to use the built-in role default.</p>
+					</div>
 				</div>
-				<div>
-					<label className="text-sm font-medium text-kumo-default block mb-1">Model</label>
-					<Select value={modelId} onValueChange={(v) => { if (v) setModelId(v); }}>
-						{models.map((m) => (
-							<Select.Option key={m.id} value={m.id}>
-								{m.name}{m.recommended ? " ★" : ""}
-							</Select.Option>
-						))}
-					</Select>
+			)}
+
+			{/* Tab: Model */}
+			{activeTab === "model" && (
+				<div className="space-y-5">
+					<div>
+						<label className="text-sm font-medium text-kumo-default block mb-1">Provider</label>
+						<Select
+							value={providerId}
+							onValueChange={(v) => {
+								if (!v) return;
+								setProviderId(v);
+								const p = (providersData?.providers ?? []).find((pr) => pr.id === v);
+								const firstModel = p?.models.find((m) => m.recommended) ?? p?.models[0];
+								if (firstModel) setModelId(firstModel.id);
+							}}
+						>
+							{(providersData?.providers ?? []).map((p) => (
+								<Select.Option key={p.id} value={p.id}>
+									{p.name}{p.requiresKey && !p.hasKey ? " ⚠ no key" : ""}
+								</Select.Option>
+							))}
+						</Select>
+						{selectedProvider && (
+							<p className="text-xs text-kumo-subtle mt-1">{selectedProvider.description}</p>
+						)}
+						{selectedProvider?.requiresKey && !selectedProvider.hasKey && (
+							<p className="text-xs text-amber-600 mt-1">⚠ No API key saved for this provider. Add it in Plugins &amp; Providers settings.</p>
+						)}
+					</div>
+					<div>
+						<label className="text-sm font-medium text-kumo-default block mb-1">Model</label>
+						<Select value={modelId} onValueChange={(v) => { if (v) setModelId(v); }}>
+							{models.map((m) => (
+								<Select.Option key={m.id} value={m.id}>
+									{m.recommended ? "★ " : ""}{m.name}
+								</Select.Option>
+							))}
+						</Select>
+					</div>
+					{/* Selected model info card */}
+					{selectedModel && (
+						<div className="rounded-lg border border-kumo-line bg-kumo-tint p-4 space-y-2">
+							<div className="flex items-center gap-2">
+								<span className="font-medium text-kumo-default text-sm">{selectedModel.name}</span>
+								{selectedModel.recommended && (
+									<Badge variant="success" className="text-xs">
+										<StarIcon size={10} className="mr-1" />
+										Recommended
+									</Badge>
+								)}
+								{selectedModel.supportsTools ? (
+									<Badge variant="secondary" className="text-xs">
+										<WrenchIcon size={10} className="mr-1" />
+										Tool use
+									</Badge>
+								) : (
+									<Badge variant="secondary" className="text-xs opacity-60">No tool use</Badge>
+								)}
+							</div>
+							<div className="font-mono text-xs text-kumo-subtle">{selectedModel.id}</div>
+							<div className="grid grid-cols-3 gap-3 pt-1">
+								<div>
+									<div className="text-xs text-kumo-subtle">Context window</div>
+									<div className="text-sm font-medium text-kumo-default">
+										{selectedModel.contextWindow >= 1000000
+											? `${(selectedModel.contextWindow / 1000000).toFixed(1)}M`
+											: `${(selectedModel.contextWindow / 1000).toFixed(0)}K`}
+									</div>
+								</div>
+								<div>
+									<div className="text-xs text-kumo-subtle">Input / 1M tokens</div>
+									<div className="text-sm font-medium text-kumo-default">
+										{selectedModel.costPer1MInput != null ? `$${selectedModel.costPer1MInput}` : <span className="text-emerald-600">Free</span>}
+									</div>
+								</div>
+								<div>
+									<div className="text-xs text-kumo-subtle">Output / 1M tokens</div>
+									<div className="text-sm font-medium text-kumo-default">
+										{selectedModel.costPer1MOutput != null ? `$${selectedModel.costPer1MOutput}` : <span className="text-emerald-600">Free</span>}
+									</div>
+								</div>
+							</div>
+						</div>
+					)}
+					{/* All models for this provider */}
+					<div>
+						<p className="text-xs text-kumo-subtle font-medium mb-2">All available models for {selectedProvider?.name}</p>
+						<div className="rounded-lg border border-kumo-line overflow-hidden">
+							{models.map((m, idx) => (
+								<button
+									key={m.id}
+									type="button"
+									onClick={() => setModelId(m.id)}
+									className={`w-full text-left flex items-center justify-between px-3 py-2.5 text-xs transition-colors cursor-pointer ${
+										m.id === modelId
+											? "bg-kumo-brand/10 border-l-2 border-kumo-brand"
+											: "hover:bg-kumo-tint border-l-2 border-transparent"
+									} ${idx > 0 ? "border-t border-kumo-line" : ""}`}
+								>
+									<div>
+										<span className="font-medium text-kumo-default flex items-center gap-1">
+											{m.recommended && <StarIcon size={11} weight="fill" className="text-amber-500" />}
+											{m.name}
+										</span>
+										<span className="text-kumo-subtle font-mono" style={{ fontSize: "10px" }}>{m.id}</span>
+									</div>
+									<div className="text-right text-kumo-subtle">
+										{m.contextWindow >= 1000000 ? `${(m.contextWindow / 1000000).toFixed(1)}M ctx` : `${(m.contextWindow / 1000).toFixed(0)}K ctx`}
+										{m.supportsTools && <span className="ml-2 text-emerald-600">tools</span>}
+									</div>
+								</button>
+							))}
+						</div>
+					</div>
 				</div>
-			</div>
+			)}
 
-			{/* System prompt override */}
-			<div>
-				<label className="text-sm font-medium text-kumo-default block mb-1">
-					System Prompt Override{" "}
-					<span className="font-normal text-kumo-subtle">(optional — leave blank to use the built-in role default)</span>
-				</label>
-				<Textarea
-					value={systemPrompt}
-					onChange={(e) => setSystemPrompt(e.target.value)}
-					placeholder="You are a helpful email assistant…"
-					rows={4}
-					className="font-mono text-sm"
-				/>
-			</div>
-
-			{/* Guardrails */}
-			<div>
-				<h3 className="text-sm font-medium text-kumo-default mb-3">Guardrails</h3>
-				<div className="space-y-3 bg-kumo-tint p-4 rounded-lg">
+			{/* Tab: Guardrails */}
+			{activeTab === "guardrails" && (
+				<div className="space-y-4">
+					<p className="text-xs text-kumo-subtle">Rate limits and budgets protect against runaway costs and spam attacks.</p>
 					<div className="grid grid-cols-2 gap-3">
 						<div>
 							<label className="text-xs text-kumo-subtle block mb-1">Max emails/hour</label>
@@ -209,48 +332,65 @@ function AgentForm({
 							/>
 						</div>
 					</div>
-					<div className="flex items-center justify-between">
-						<div>
-							<div className="text-sm text-kumo-default">Auto-send</div>
-							<div className="text-xs text-kumo-subtle">Send emails without human review (use with caution)</div>
-						</div>
-						<Switch
-							checked={guardrails.autoSend}
-							onCheckedChange={(v) => setGuardrails({ ...guardrails, autoSend: v })}
-						/>
-					</div>
-					{guardrails.autoSend && (
-						<div>
-							<label className="text-xs text-kumo-subtle block mb-1">Max auto-sends/day</label>
-							<Input
-								type="number"
-								value={guardrails.maxAutoSendPerDay}
-								onChange={(e) => setGuardrails({ ...guardrails, maxAutoSendPerDay: Number(e.target.value) })}
-								min={1}
-								max={200}
+					<div className="space-y-3 bg-kumo-tint p-4 rounded-lg border border-kumo-line">
+						<div className="flex items-center justify-between">
+							<div>
+								<div className="text-sm text-kumo-default font-medium">Auto-send</div>
+								<div className="text-xs text-kumo-subtle mt-0.5">Send emails without human review — use with caution</div>
+							</div>
+							<Switch
+								checked={guardrails.autoSend}
+								onCheckedChange={(v) => setGuardrails({ ...guardrails, autoSend: v })}
 							/>
 						</div>
-					)}
-					<div className="flex items-center justify-between">
-						<div>
-							<div className="text-sm text-kumo-default">Require spam check</div>
-							<div className="text-xs text-kumo-subtle">Run spam guard before this agent processes an email</div>
+						{guardrails.autoSend && (
+							<div className="pt-2 border-t border-kumo-line">
+								<label className="text-xs text-kumo-subtle block mb-1">Max auto-sends/day</label>
+								<Input
+									type="number"
+									value={guardrails.maxAutoSendPerDay}
+									onChange={(e) => setGuardrails({ ...guardrails, maxAutoSendPerDay: Number(e.target.value) })}
+									min={1}
+									max={200}
+								/>
+							</div>
+						)}
+						<div className="flex items-center justify-between pt-2 border-t border-kumo-line">
+							<div>
+								<div className="text-sm text-kumo-default font-medium">Require spam check</div>
+								<div className="text-xs text-kumo-subtle mt-0.5">Run spam guard before this agent processes an email</div>
+							</div>
+							<Switch
+								checked={guardrails.requireSpamCheck}
+								onCheckedChange={(v) => setGuardrails({ ...guardrails, requireSpamCheck: v })}
+							/>
 						</div>
-						<Switch
-							checked={guardrails.requireSpamCheck}
-							onCheckedChange={(v) => setGuardrails({ ...guardrails, requireSpamCheck: v })}
-						/>
 					</div>
 				</div>
-			</div>
+			)}
 
 			{/* Actions */}
-			<div className="flex justify-end gap-2 pt-2">
-				<Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
-				<Button variant="primary" onClick={handleSave} disabled={saving || !name.trim()}>
-					{saving && <SpinnerGapIcon size={16} className="animate-spin mr-1" />}
-					{initial ? "Save Changes" : "Create Agent"}
-				</Button>
+			<div className="flex justify-between items-center pt-5 mt-2 border-t border-kumo-line">
+				<div className="flex gap-1">
+					{TABS.map((tab, idx) => (
+						<button
+							key={tab.id}
+							type="button"
+							onClick={() => setActiveTab(tab.id)}
+							className={`w-2 h-2 rounded-full transition-colors cursor-pointer ${
+								activeTab === tab.id ? "bg-kumo-brand" : "bg-kumo-line hover:bg-kumo-fill"
+							}`}
+							aria-label={`Go to ${tab.label} tab`}
+						/>
+					))}
+				</div>
+				<div className="flex gap-2">
+					<Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
+					<Button variant="primary" onClick={handleSave} disabled={saving || !name.trim()}>
+						{saving && <SpinnerGapIcon size={16} className="animate-spin mr-1" />}
+						{initial ? "Save Changes" : "Create Agent"}
+					</Button>
+				</div>
 			</div>
 		</div>
 	);

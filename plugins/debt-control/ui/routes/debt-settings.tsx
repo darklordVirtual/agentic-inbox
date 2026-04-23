@@ -1,14 +1,26 @@
+import { Badge, Button, Select, Switch, useKumoToastManager } from "@cloudflare/kumo";
+import {
+	BankIcon,
+	ToggleLeftIcon,
+	SpinnerGapIcon,
+} from "@phosphor-icons/react";
 import { useParams } from "react-router";
 import { useDebtSettings, useUpdateDebtSettings } from "../queries";
 import type { PluginSettings } from "../../types";
 
 export default function DebtSettings() {
 	const { mailboxId } = useParams<{ mailboxId: string }>();
+	const toastManager = useKumoToastManager();
 	const { data: settings, isLoading } = useDebtSettings(mailboxId);
 	const update = useUpdateDebtSettings(mailboxId!);
 
 	if (isLoading || !settings) {
-		return <div className="p-6 text-sm text-gray-500">Laster innstillinger…</div>;
+		return (
+			<div className="flex items-center gap-2 p-6 text-sm text-kumo-subtle">
+				<SpinnerGapIcon size={16} className="animate-spin" />
+				Laster innstillinger…
+			</div>
+		);
 	}
 
 	function toggle(key: keyof PluginSettings) {
@@ -17,84 +29,117 @@ export default function DebtSettings() {
 	}
 
 	return (
-		<div className="p-6 max-w-xl mx-auto space-y-6">
-			<h1 className="text-xl font-semibold text-gray-900">Debt Control — innstillinger</h1>
+		<div className="max-w-2xl mx-auto py-10 px-6 space-y-8">
+			<div>
+				<h1 className="text-2xl font-bold text-kumo-default flex items-center gap-2">
+					<BankIcon size={24} />
+					Debt Control — Innstillinger
+				</h1>
+				<p className="text-sm text-kumo-subtle mt-1">
+					Konfigurer automatisert gjeldsbehandling og bankintegrasjon.
+				</p>
+			</div>
 
-			<Section title="Generelt">
-				<Toggle
-					label="Aktiver Debt Control"
-					checked={settings.enabled}
-					onChange={() => toggle("enabled")}
-				/>
-				<Toggle
-					label="Klassifiser innkommende e-poster automatisk"
-					checked={settings.autoClassify}
-					onChange={() => toggle("autoClassify")}
-				/>
-				<Toggle
-					label="Avstem automatisk etter banksynk"
-					checked={settings.autoReconcile}
-					onChange={() => toggle("autoReconcile")}
-				/>
-			</Section>
-
-			<Section title="Bankintegrasjon">
-				<div className="space-y-2">
-					<label className="text-sm font-medium text-gray-700">Bankprovider</label>
-					<select
-						value={settings.bankProvider}
-						onChange={(e) =>
-							update.mutate({ bankProvider: e.target.value as PluginSettings["bankProvider"] })
-						}
-						className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-					>
-						<option value="none">Ingen</option>
-						<option value="sparebank1">SpareBank 1</option>
-						<option value="csv">CSV-import</option>
-					</select>
-					{settings.bankProvider !== "none" && (
-						<p className="text-xs text-gray-400">
-							Konfigurer API-nøkler under{" "}
-							<a href="#bank" className="text-blue-600 hover:underline">
-								Bankinnstillinger
-							</a>
-							.
-						</p>
-					)}
+			{/* Generelt */}
+			<section>
+				<h2 className="text-base font-semibold text-kumo-default mb-4 flex items-center gap-2">
+					<ToggleLeftIcon size={18} />
+					Generelt
+				</h2>
+				<div className="divide-y divide-kumo-line border border-kumo-line rounded-lg overflow-hidden">
+					<SettingRow
+						label="Aktiver Debt Control"
+						description="Slå av for å deaktivere all automatisk behandling."
+						checked={settings.enabled}
+						onChange={() => toggle("enabled")}
+						disabled={update.isPending}
+					/>
+					<SettingRow
+						label="Klassifiser innkommende e-poster automatisk"
+						description="Kjør klassifiseringsmotor automatisk når en ny e-post ankommer."
+						checked={settings.autoClassify}
+						onChange={() => toggle("autoClassify")}
+						disabled={update.isPending}
+					/>
+					<SettingRow
+						label="Avstem automatisk etter banksynk"
+						description="Match transaksjoner mot åpne saker etter en synkronisering."
+						checked={settings.autoReconcile}
+						onChange={() => toggle("autoReconcile")}
+						disabled={update.isPending}
+					/>
 				</div>
-			</Section>
+			</section>
+
+			{/* Bankintegrasjon */}
+			<section>
+				<h2 className="text-base font-semibold text-kumo-default mb-4 flex items-center gap-2">
+					<BankIcon size={18} />
+					Bankintegrasjon
+				</h2>
+				<div className="border border-kumo-line rounded-lg overflow-hidden">
+					<div className="px-4 py-4 bg-kumo-surface">
+						<label className="text-sm font-medium text-kumo-default block mb-2">Bankprovider</label>
+						<Select
+							value={settings.bankProvider}
+							onValueChange={(v) => {
+								if (v) update.mutate({ bankProvider: v as PluginSettings["bankProvider"] });
+							}}
+						>
+							<Select.Option value="none">Ingen</Select.Option>
+							<Select.Option value="sparebank1">SpareBank 1</Select.Option>
+							<Select.Option value="csv">CSV-import</Select.Option>
+						</Select>
+						{settings.bankProvider === "sparebank1" && (
+							<div className="mt-3 rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800 space-y-1">
+								<p className="font-medium">SpareBank 1 API-oppsett</p>
+								<p>Konfigurer <strong>Konto-ID</strong> og tilkoblingstest under <em>Bankinnstillinger</em>-fanen.</p>
+								<p>API-hemmeligheter (<code className="bg-blue-100 px-1 rounded">SB1_CLIENT_ID</code>, <code className="bg-blue-100 px-1 rounded">SB1_ACCESS_TOKEN</code>) settes via Cloudflare Worker secrets:</p>
+								<code className="block bg-blue-100 px-2 py-1 rounded font-mono mt-1">
+									wrangler secret put SB1_CLIENT_ID
+								</code>
+							</div>
+						)}
+						{settings.bankProvider === "csv" && (
+							<div className="mt-3 rounded-lg bg-kumo-tint border border-kumo-line p-3 text-xs text-kumo-subtle">
+								<p className="font-medium text-kumo-default">CSV-import</p>
+								<p className="mt-1">Last opp CSV-filer med transaksjoner via bank-synkroniseringsfunksjonen. Kolonner: <code className="font-mono">date,description,amount,balance,reference</code></p>
+							</div>
+						)}
+					</div>
+				</div>
+			</section>
+
+			{update.isPending && (
+				<div className="text-xs text-kumo-subtle flex items-center gap-1">
+					<SpinnerGapIcon size={12} className="animate-spin" />
+					Lagrer…
+				</div>
+			)}
 		</div>
 	);
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function SettingRow({
+	label,
+	description,
+	checked,
+	onChange,
+	disabled,
+}: {
+	label: string;
+	description: string;
+	checked: boolean;
+	onChange: () => void;
+	disabled?: boolean;
+}) {
 	return (
-		<div className="bg-white border rounded-xl p-5 space-y-4">
-			<h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">{title}</h2>
-			{children}
+		<div className="flex items-center justify-between px-4 py-4 bg-kumo-surface gap-4">
+			<div className="flex-1">
+				<div className="text-sm font-medium text-kumo-default">{label}</div>
+				<div className="text-xs text-kumo-subtle mt-0.5">{description}</div>
+			</div>
+			<Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
 		</div>
-	);
-}
-
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) {
-	return (
-		<label className="flex items-center justify-between gap-4 cursor-pointer">
-			<span className="text-sm text-gray-700">{label}</span>
-			<button
-				type="button"
-				role="switch"
-				aria-checked={checked}
-				onClick={onChange}
-				className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-					checked ? "bg-blue-600" : "bg-gray-200"
-				}`}
-			>
-				<span
-					className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-						checked ? "translate-x-6" : "translate-x-1"
-					}`}
-				/>
-			</button>
-		</label>
 	);
 }

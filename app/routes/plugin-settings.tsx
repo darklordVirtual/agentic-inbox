@@ -7,6 +7,11 @@ import {
 	CheckIcon,
 	XIcon,
 	TrashIcon,
+	CaretDownIcon,
+	CaretUpIcon,
+	StarIcon,
+	WrenchIcon,
+	CpuIcon,
 } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useParams } from "react-router";
@@ -203,31 +208,123 @@ export default function PluginSettingsRoute() {
 				) : (
 					<div className="divide-y divide-kumo-line border border-kumo-line rounded-lg overflow-hidden">
 						{(providersData?.providers ?? []).map((provider) => (
-							<div key={provider.id} className="px-4 py-4 bg-kumo-surface">
-								<div className="flex items-start justify-between gap-4">
-									<div>
-										<div className="font-medium text-kumo-default">{provider.name}</div>
-										<div className="text-sm text-kumo-subtle mt-0.5">{provider.description}</div>
-										<div className="text-xs text-kumo-subtle mt-1">
-											{provider.models.length} model{provider.models.length !== 1 ? "s" : ""} available
-											{provider.models.some((m) => m.recommended) && (
-												<span className="ml-2 text-emerald-600">
-													· Recommended: {provider.models.find((m) => m.recommended)?.name}
-												</span>
-											)}
-										</div>
-									</div>
-									<div className="shrink-0">
-										{mailboxId && (
-											<ProviderKeyForm provider={provider} mailboxId={mailboxId} />
-										)}
-									</div>
-								</div>
-							</div>
+							<ProviderCard
+								key={provider.id}
+								provider={provider}
+								mailboxId={mailboxId}
+							/>
 						))}
 					</div>
 				)}
 			</section>
+		</div>
+	);
+}
+
+// ── Provider card with expandable model list ──────────────────────
+
+function ProviderCard({
+	provider,
+	mailboxId,
+}: {
+	provider: ProviderInfo;
+	mailboxId: string | undefined;
+}) {
+	const [expanded, setExpanded] = useState(false);
+
+	return (
+		<div className="px-4 py-4 bg-kumo-surface">
+			<div className="flex items-start justify-between gap-4">
+				<div className="flex-1 min-w-0">
+					<div className="flex items-center gap-2 flex-wrap">
+						<span className="font-medium text-kumo-default">{provider.name}</span>
+						{!provider.requiresKey && (
+							<Badge variant="success" className="text-xs">No key required</Badge>
+						)}
+						{provider.requiresKey && provider.hasKey && (
+							<Badge variant="success" className="text-xs">
+								<CheckIcon size={10} className="mr-1" />
+								Key set
+							</Badge>
+						)}
+					</div>
+					<div className="text-sm text-kumo-subtle mt-0.5">{provider.description}</div>
+					<button
+						type="button"
+						onClick={() => setExpanded((x) => !x)}
+						className="text-xs text-kumo-brand hover:text-kumo-brand-hover flex items-center gap-1 mt-1 cursor-pointer"
+					>
+						{expanded ? <CaretUpIcon size={12} /> : <CaretDownIcon size={12} />}
+						{provider.models.length} model{provider.models.length !== 1 ? "s" : ""}
+						{provider.models.some((m) => m.recommended) && !expanded && (
+							<span className="ml-1 text-emerald-600">
+								· Recommended: {provider.models.find((m) => m.recommended)?.name}
+							</span>
+						)}
+					</button>
+				</div>
+				<div className="shrink-0">
+					{mailboxId && (
+						<ProviderKeyForm provider={provider} mailboxId={mailboxId} />
+					)}
+				</div>
+			</div>
+
+			{/* Expandable model list */}
+			{expanded && (
+				<div className="mt-3 rounded-lg border border-kumo-line overflow-hidden">
+					<table className="w-full text-xs">
+						<thead className="bg-kumo-tint border-b border-kumo-line">
+							<tr>
+								<th className="text-left px-3 py-2 font-medium text-kumo-subtle">Model</th>
+								<th className="text-left px-3 py-2 font-medium text-kumo-subtle">Context</th>
+								<th className="text-left px-3 py-2 font-medium text-kumo-subtle">Input $/1M</th>
+								<th className="text-left px-3 py-2 font-medium text-kumo-subtle">Output $/1M</th>
+								<th className="text-left px-3 py-2 font-medium text-kumo-subtle">Tools</th>
+							</tr>
+						</thead>
+						<tbody className="divide-y divide-kumo-line">
+							{provider.models.map((m) => (
+								<tr key={m.id} className={m.recommended ? "bg-emerald-50/40" : "bg-kumo-surface"}>
+									<td className="px-3 py-2">
+										<div className="flex items-center gap-1.5">
+											{m.recommended && <StarIcon size={11} weight="fill" className="text-amber-500" />}
+											<span className="font-medium text-kumo-default">{m.name}</span>
+										</div>
+										<div className="text-kumo-subtle font-mono mt-0.5" style={{ fontSize: "10px" }}>{m.id}</div>
+									</td>
+									<td className="px-3 py-2 text-kumo-subtle">
+										{m.contextWindow >= 1000000
+											? `${(m.contextWindow / 1000000).toFixed(0)}M`
+											: m.contextWindow >= 1000
+											? `${(m.contextWindow / 1000).toFixed(0)}K`
+											: m.contextWindow}
+									</td>
+									<td className="px-3 py-2 text-kumo-subtle">
+										{m.costPer1MInput != null ? `$${m.costPer1MInput}` : <span className="text-emerald-600">Free</span>}
+									</td>
+									<td className="px-3 py-2 text-kumo-subtle">
+										{m.costPer1MOutput != null ? `$${m.costPer1MOutput}` : <span className="text-emerald-600">Free</span>}
+									</td>
+									<td className="px-3 py-2">
+										{m.supportsTools ? (
+											<span className="text-emerald-600 flex items-center gap-1">
+												<WrenchIcon size={11} /> Yes
+											</span>
+										) : (
+											<span className="text-kumo-subtle">No</span>
+										)}
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+					<div className="px-3 py-2 bg-kumo-tint/50 text-xs text-kumo-subtle border-t border-kumo-line flex items-center gap-1">
+						<CpuIcon size={12} />
+						Select a model when creating or editing an agent in the AI Agents section.
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }
