@@ -24,4 +24,15 @@ export const queryKeys = {
 			["search", mailboxId, query, page] as const,
 	},
 	config: ["config"] as const,
+	plugins: {
+		list: (mailboxId: string) => ["plugins", mailboxId] as const,
+		providers: (mailboxId: string) => ["providers", mailboxId] as const,
+	},
+	agents: {
+		list: (mailboxId: string) => ["agents", mailboxId] as const,
+		detail: (mailboxId: string, agentId: string) => ["agents", mailboxId, agentId] as const,
+		usage: (mailboxId: string, agentId: string, days: number) => ["agents", mailboxId, agentId, "usage", days] as const,
+		reports: (mailboxId: string) => ["sender-reports", mailboxId] as const,
+		report: (mailboxId: string, email: string) => ["sender-reports", mailboxId, email] as const,
+	},
 };

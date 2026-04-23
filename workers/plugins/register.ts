@@ -5,5 +5,7 @@
 
 import { pluginRegistry } from "./loader";
 import { debtControlPlugin } from "../../plugins/debt-control/index";
+import { agentsPlugin } from "../../plugins/agents/index";
 
 pluginRegistry.register(debtControlPlugin);
+pluginRegistry.register(agentsPlugin);

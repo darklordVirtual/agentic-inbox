@@ -15,6 +15,11 @@ export default [
 		route("emails/:folder", "routes/email-list.tsx"),
 		route("settings", "routes/settings.tsx"),
 		route("search", "routes/search-results.tsx"),
+		// Plugin management
+		route("plugins", "routes/plugin-settings.tsx"),
+		// Agents plugin
+		route("agents", "routes/agents.tsx"),
+		route("agents/reports", "routes/sender-reports.tsx"),
 		// Debt Control plugin routes
 		route("debt", "../plugins/debt-control/ui/routes/debt-dashboard.tsx"),
 		route("debt/cases/:caseId", "../plugins/debt-control/ui/routes/debt-case.tsx"),

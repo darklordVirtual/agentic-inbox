@@ -12,6 +12,27 @@ import type { InboxPlugin, PluginContext, OnEmailReceivedPayload, OnMessageOpene
 import type { MailboxContext } from "../lib/mailbox";
 import { applyMigrations } from "../durableObject/migrations";
 
+/** Enabled/disabled state is stored in R2 under mailboxes/<id>_plugins.json */
+type PluginStateMap = Record<string, boolean>;
+
+async function loadPluginState(env: Cloudflare.Env, mailboxId: string): Promise<PluginStateMap> {
+	try {
+		const obj = await env.BUCKET.get(`mailboxes/${mailboxId}_plugins.json`);
+		if (obj) return obj.json<PluginStateMap>();
+	} catch {
+		// Return empty — all plugins default to enabled
+	}
+	return {};
+}
+
+export async function savePluginState(env: Cloudflare.Env, mailboxId: string, state: PluginStateMap): Promise<void> {
+	await env.BUCKET.put(
+		`mailboxes/${mailboxId}_plugins.json`,
+		JSON.stringify(state),
+		{ httpMetadata: { contentType: "application/json" } },
+	);
+}
+
 class PluginRegistry {
 	private plugins: Map<string, InboxPlugin> = new Map();
 
@@ -55,7 +76,10 @@ class PluginRegistry {
 		payload: OnEmailReceivedPayload,
 		ctx: PluginContext,
 	): Promise<void> {
+		const state = await loadPluginState(ctx.env, ctx.mailboxId);
 		for (const plugin of this.plugins.values()) {
+			// Default to enabled unless explicitly disabled
+			if (state[plugin.manifest.id] === false) continue;
 			if (plugin.onEmailReceived) {
 				try {
 					await plugin.onEmailReceived(payload, ctx);
@@ -70,7 +94,9 @@ class PluginRegistry {
 		payload: OnMessageOpenedPayload,
 		ctx: PluginContext,
 	): Promise<void> {
+		const state = await loadPluginState(ctx.env, ctx.mailboxId);
 		for (const plugin of this.plugins.values()) {
+			if (state[plugin.manifest.id] === false) continue;
 			if (plugin.onMessageOpened) {
 				try {
 					await plugin.onMessageOpened(payload, ctx);
@@ -85,7 +111,9 @@ class PluginRegistry {
 		payload: OnSyncRequestPayload,
 		ctx: PluginContext,
 	): Promise<void> {
+		const state = await loadPluginState(ctx.env, ctx.mailboxId);
 		for (const plugin of this.plugins.values()) {
+			if (state[plugin.manifest.id] === false) continue;
 			if (plugin.onSyncRequest) {
 				try {
 					await plugin.onSyncRequest(payload, ctx);
@@ -110,6 +138,10 @@ class PluginRegistry {
 
 	getAll(): InboxPlugin[] {
 		return Array.from(this.plugins.values());
+	}
+
+	getById(id: string): InboxPlugin | undefined {
+		return this.plugins.get(id);
 	}
 }
 

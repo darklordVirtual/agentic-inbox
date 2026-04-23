@@ -20,7 +20,8 @@ import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { Folders } from "../shared/folders";
 import type { Env } from "./types";
 import { requireMailbox, type MailboxContext } from "./lib/mailbox";
-import { pluginRegistry } from "./plugins/loader";
+import { pluginRegistry, savePluginState } from "./plugins/loader";
+import { PROVIDERS, storeProviderKey, getProviderKey, deleteProviderKey, listConfiguredProviders } from "./lib/providers";
 
 type AppContext = Context<MailboxContext>;
 
@@ -313,6 +314,69 @@ app.get("/api/v1/mailboxes/:mailboxId/search", async (c: AppContext) => {
 	const totalCount = await stub.countSearchResults(searchOpts);
 	return c.json({ emails, totalCount });
 });
+
+// -- Attachments ----------------------------------------------------
+
+app.get("/api/v1/mailboxes/:mailboxId/plugins", async (c: AppContext) => {
+	const mailboxId = c.req.param("mailboxId")!;
+	const stateObj = await c.env.BUCKET.get(`mailboxes/${mailboxId}_plugins.json`);
+	const state: Record<string, boolean> = stateObj ? await stateObj.json() : {};
+	const plugins = pluginRegistry.getAll().map((p) => ({
+		id: p.manifest.id,
+		name: p.manifest.name,
+		version: p.manifest.version,
+		description: p.manifest.description,
+		enabled: state[p.manifest.id] !== false,
+		settingsSchema: p.manifest.settingsSchema ?? null,
+	}));
+	return c.json(plugins);
+});
+
+app.put("/api/v1/mailboxes/:mailboxId/plugins/:pluginId", async (c: AppContext) => {
+	const mailboxId = c.req.param("mailboxId")!;
+	const pluginId = c.req.param("pluginId")!;
+	if (!pluginRegistry.getById(pluginId)) return c.json({ error: "Plugin not found" }, 404);
+	const { enabled } = (await c.req.json()) as { enabled: boolean };
+	const stateObj = await c.env.BUCKET.get(`mailboxes/${mailboxId}_plugins.json`);
+	const state: Record<string, boolean> = stateObj ? await stateObj.json() : {};
+	state[pluginId] = enabled;
+	await savePluginState(c.env, mailboxId, state);
+	return c.json({ id: pluginId, enabled });
+});
+
+// -- Provider / API key management ---------------------------------
+// Keys are AES-GCM encrypted per-mailbox in R2. The secret key material
+// never leaves the worker unencrypted.
+
+app.get("/api/v1/mailboxes/:mailboxId/providers", async (c: AppContext) => {
+	const mailboxId = c.req.param("mailboxId")!;
+	const configured = await listConfiguredProviders(c.env, mailboxId);
+	const result = PROVIDERS.map((p) => ({
+		...p,
+		hasKey: configured.includes(p.id),
+	}));
+	return c.json(result);
+});
+
+app.put("/api/v1/mailboxes/:mailboxId/providers/:providerId", async (c: AppContext) => {
+	const mailboxId = c.req.param("mailboxId")!;
+	const providerId = c.req.param("providerId")!;
+	if (!PROVIDERS.find((p) => p.id === providerId)) return c.json({ error: "Unknown provider" }, 400);
+	const { apiKey } = (await c.req.json()) as { apiKey: string };
+	if (typeof apiKey !== "string" || apiKey.trim().length < 10) {
+		return c.json({ error: "apiKey must be a non-empty string" }, 400);
+	}
+	await storeProviderKey(c.env, mailboxId, providerId, apiKey.trim());
+	return c.json({ id: providerId, status: "saved" });
+});
+
+app.delete("/api/v1/mailboxes/:mailboxId/providers/:providerId", async (c: AppContext) => {
+	const mailboxId = c.req.param("mailboxId")!;
+	const providerId = c.req.param("providerId")!;
+	await deleteProviderKey(c.env, mailboxId, providerId);
+	return c.body(null, 204);
+});
+
 
 // -- Attachments ----------------------------------------------------
 

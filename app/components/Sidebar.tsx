@@ -8,9 +8,13 @@ import {
 	CaretLeftIcon,
 	FileIcon,
 	FolderIcon,
+	GearIcon,
+	IdentificationCardIcon,
 	PaperPlaneTiltIcon,
 	PencilSimpleIcon,
+	PlugsIcon,
 	PlusIcon,
+	RobotIcon,
 	ScalesIcon,
 	TrashIcon,
 	TrayIcon,
@@ -210,9 +214,27 @@ export default function Sidebar() {
 						</span>
 					</div>
 					<FolderLink
+						to={`/mailbox/${mailboxId}/agents`}
+						icon={<RobotIcon size={18} weight="regular" />}
+						label="AI Agents"
+						onClick={handleNavClick}
+					/>
+					<FolderLink
+						to={`/mailbox/${mailboxId}/agents/reports`}
+						icon={<IdentificationCardIcon size={18} weight="regular" />}
+						label="Sender Reports"
+						onClick={handleNavClick}
+					/>
+					<FolderLink
 						to={`/mailbox/${mailboxId}/debt`}
 						icon={<ScalesIcon size={18} weight="regular" />}
 						label="Gjeldsoversikt"
+						onClick={handleNavClick}
+					/>
+					<FolderLink
+						to={`/mailbox/${mailboxId}/plugins`}
+						icon={<PlugsIcon size={18} weight="regular" />}
+						label="Manage Plugins"
 						onClick={handleNavClick}
 					/>
 				</div>

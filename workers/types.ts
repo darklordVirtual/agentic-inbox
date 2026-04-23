@@ -5,4 +5,6 @@
 export interface Env extends Cloudflare.Env {
 	POLICY_AUD: string;
 	TEAM_DOMAIN: string;
+	/** Worker secret used as HKDF base key for per-mailbox API key encryption. */
+	SECRET?: string;
 }

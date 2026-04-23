@@ -129,6 +129,7 @@ export default function App() {
 export function ErrorBoundary({ error }: { error: unknown }) {
 	let title = "Something went wrong";
 	let description = "An unexpected error occurred. Please try again.";
+	let detail: string | null = null;
 	let status: number | null = null;
 
 	if (isRouteErrorResponse(error)) {
@@ -140,28 +141,47 @@ export function ErrorBoundary({ error }: { error: unknown }) {
 		} else {
 			title = `Error ${error.status}`;
 			description = error.statusText || description;
+			detail = error.data ? JSON.stringify(error.data, null, 2) : null;
 		}
-	} else if (error instanceof Error && import.meta.env.DEV) {
+	} else if (error instanceof Error) {
 		description = error.message;
+		detail = error.stack ?? null;
 	}
+
+	// Always log to console so it appears in Cloudflare Workers logs
+	console.error("[ErrorBoundary]", error);
 
 	return (
 		<div className="flex items-center justify-center min-h-screen p-8">
-			<Empty
-				icon={<WarningIcon size={48} className="text-kumo-inactive" />}
-				title={status === 404 ? "404 — Page not found" : title}
-				description={description}
-				contents={
-					<Button
-						variant="primary"
-						onClick={() => {
-							window.location.href = "/";
-						}}
-					>
-						Go Home
-					</Button>
-				}
-			/>
+			<div className="w-full max-w-lg">
+				<Empty
+					icon={<WarningIcon size={48} className="text-kumo-inactive" />}
+					title={status === 404 ? "404 — Page not found" : title}
+					description={description}
+					contents={
+						<div className="flex flex-col items-center gap-3 w-full">
+							<Button
+								variant="primary"
+								onClick={() => {
+									window.location.href = "/";
+								}}
+							>
+								Go Home
+							</Button>
+							{detail && (
+								<details className="w-full text-left mt-2">
+									<summary className="text-xs text-kumo-subtle cursor-pointer select-none">
+										Show error details
+									</summary>
+									<pre className="mt-2 text-xs bg-kumo-tint rounded p-3 overflow-auto max-h-64 whitespace-pre-wrap break-all">
+										{detail}
+									</pre>
+								</details>
+							)}
+						</div>
+					}
+				/>
+			</div>
 		</div>
 	);
 }
