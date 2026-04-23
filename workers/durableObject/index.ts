@@ -881,4 +881,80 @@ export class MailboxDO extends DurableObject<Env> {
 			this.db.insert(schema.attachments).values(attachments).run();
 		}
 	}
+
+	// ── Brain memory (raw SQL) ─────────────────────────────────────
+
+	/** Persist a key/value memory entry for this mailbox. */
+	async brainRemember(
+		scope: string,
+		key: string,
+		value: string,
+		ttlDays?: number,
+	): Promise<void> {
+		const id = `${scope}:${key}`;
+		const expiresAt = ttlDays
+			? new Date(Date.now() + ttlDays * 86_400_000).toISOString()
+			: null;
+		this.ctx.storage.sql.exec(
+			`INSERT INTO mb_brain (id, scope, key, value, expires_at, updated_at)
+			 VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))
+			 ON CONFLICT(id) DO UPDATE SET
+			   value = excluded.value,
+			   expires_at = excluded.expires_at,
+			   updated_at = excluded.updated_at`,
+			id, scope, key, value, expiresAt,
+		);
+	}
+
+	/** Retrieve memories for a scope (+ optional key filter). */
+	async brainRecall(scope: string, key?: string): Promise<{ scope: string; key: string; value: string; updatedAt: string }[]> {
+		const rows = key
+			? [...this.ctx.storage.sql.exec(
+				`SELECT scope, key, value, updated_at FROM mb_brain
+				 WHERE scope = ?1 AND key = ?2
+				   AND (expires_at IS NULL OR expires_at > datetime('now'))`,
+				scope, key,
+			)]
+			: [...this.ctx.storage.sql.exec(
+				`SELECT scope, key, value, updated_at FROM mb_brain
+				 WHERE scope = ?1
+				   AND (expires_at IS NULL OR expires_at > datetime('now'))
+				 ORDER BY updated_at DESC LIMIT 50`,
+				scope,
+			)];
+		return rows.map((r: any) => ({
+			scope: r.scope as string,
+			key:   r.key   as string,
+			value: r.value as string,
+			updatedAt: r.updated_at as string,
+		}));
+	}
+
+	/** Return a compact text summary of all active memories. */
+	async brainSummary(): Promise<string> {
+		const rows = [...this.ctx.storage.sql.exec(
+			`SELECT scope, key, value FROM mb_brain
+			 WHERE (expires_at IS NULL OR expires_at > datetime('now'))
+			 ORDER BY scope, updated_at DESC LIMIT 80`,
+		)];
+		if (rows.length === 0) return "No memories stored.";
+		return (rows as any[]).map((r) => `[${r.scope}/${r.key}] ${r.value}`).join("\n");
+	}
+
+	/** Count replies sent in a thread (loop detection). */
+	async brainLoopCount(threadId: string): Promise<number> {
+		const rows = [...this.ctx.storage.sql.exec(
+			`SELECT value FROM mb_brain
+			 WHERE scope = 'loop' AND key = ?1
+			   AND (expires_at IS NULL OR expires_at > datetime('now'))`,
+			`${threadId}:sent`,
+		)] as any[];
+		return rows.length > 0 ? parseInt(rows[0].value as string, 10) || 0 : 0;
+	}
+
+	/** Increment the reply counter for a thread (loop detection). */
+	async brainLoopRecord(threadId: string): Promise<void> {
+		const current = await this.brainLoopCount(threadId);
+		await this.brainRemember("loop", `${threadId}:sent`, String(current + 1), 7);
+	}
 }

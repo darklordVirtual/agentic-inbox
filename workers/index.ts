@@ -413,13 +413,18 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 			const sql = await stub.getSql();
 			await pluginRegistry.dispatchEmailReceived(
 				{
-					emailId:       messageId,
-					subject:       parsedEmail.subject || "",
-					sender:        (parsedEmail.from?.address || "").toLowerCase(),
-					recipient:     allRecipients.join(", "),
-					body:          parsedEmail.text || parsedEmail.html || null,
-					date:          new Date().toISOString(),
-					attachmentIds: attachmentData.map((a) => a.id),
+					emailId:     messageId,
+					subject:     parsedEmail.subject || "",
+					sender:      (parsedEmail.from?.address || "").toLowerCase(),
+					recipient:   allRecipients.join(", "),
+					body:        parsedEmail.text || parsedEmail.html || null,
+					date:        new Date().toISOString(),
+					attachments: attachmentData.map((a) => ({
+						id:       a.id,
+						filename: a.filename,
+						mimetype: a.mimetype,
+						size:     a.size,
+					})),
 				},
 				{ mailboxId, sql, env },
 			);

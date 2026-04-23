@@ -21,6 +21,10 @@ interface ProcessEmailInput {
 	mailboxId: string;
 	classification: ClassificationResult;
 	bodyText: string;
+	/** Extracted text from PDF attachments, parallel-indexed with attachmentIds. */
+	attachmentTexts?: string[];
+	/** R2-stored attachment IDs corresponding to attachmentTexts entries. */
+	attachmentIds?: string[];
 }
 
 /**
@@ -84,15 +88,29 @@ export function processEmail(
 		existingCase = casesRepo.findById(sql, existingCase.id)!;
 	}
 
-	// 4. Create document record
+	// 4. Create document record for the email body
 	const document = documentsRepo.create(sql, {
-		caseId: existingCase.id,
+		caseId:        existingCase.id,
 		emailId,
-		attachmentId: null,
-		kind: classification.kind,
+		attachmentId:  null,
+		kind:          classification.kind,
 		extractedText: input.bodyText,
-		analyzedAt: new Date().toISOString(),
+		analyzedAt:    new Date().toISOString(),
 	});
+
+	// 5. Create additional document records for each PDF attachment
+	const attachmentTexts = input.attachmentTexts ?? [];
+	const attachmentIds   = input.attachmentIds   ?? [];
+	for (let i = 0; i < attachmentTexts.length; i++) {
+		documentsRepo.create(sql, {
+			caseId:        existingCase.id,
+			emailId,
+			attachmentId:  attachmentIds[i] ?? null,
+			kind:          classification.kind,
+			extractedText: attachmentTexts[i],
+			analyzedAt:    new Date().toISOString(),
+		});
+	}
 
 	return { case: existingCase, document, isNew };
 }

@@ -11,6 +11,7 @@ import {
 	toolGetEmail,
 	toolGetThread,
 	toolSearchEmails,
+	toolReadAttachment,
 	toolDraftReply,
 	toolDraftEmail,
 	toolUpdateDraft,
@@ -19,6 +20,9 @@ import {
 	toolSendEmail,
 	toolMarkEmailRead,
 	toolMoveEmail,
+	toolBrainRemember,
+	toolBrainRecall,
+	toolBrainSummary,
 } from "../lib/tools";
 import { Folders, FOLDER_TOOL_DESCRIPTION, MOVE_FOLDER_TOOL_DESCRIPTION } from "../../shared/folders";
 import type { Env } from "../types";
@@ -426,6 +430,87 @@ export class EmailMCP extends McpAgent<Env> {
 						isError: true,
 					};
 				}
+				return mcpText(result);
+			},
+		);
+
+		// ── read_attachment ────────────────────────────────────────
+		this.server.tool(
+			"read_attachment",
+			"Read the text content of an email attachment (PDF or plain text). Use this to analyse invoices, court letters, contracts, or other documents attached to emails. First call get_email to see available attachments and their IDs.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				emailId: z.string().describe("The ID of the email that contains the attachment"),
+				attachmentId: z.string().describe("The attachment ID (from the email's attachments array)"),
+				filename: z.string().describe("The attachment filename (e.g. 'invoice.pdf')"),
+			},
+			async ({ mailboxId, emailId, attachmentId, filename }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				const result = await toolReadAttachment(env, mailboxId, emailId, attachmentId, filename);
+				return mcpText(result);
+			},
+		);
+
+		// ── brain_remember ─────────────────────────────────────────
+		this.server.tool(
+			"brain_remember",
+			"Store a persistent fact in the mailbox brain memory. Memories survive across sessions and are accessible to the AI agent. Use scope='sender' for per-sender knowledge, scope='instruction' for handling rules, scope='preference' for mailbox settings (e.g. key='auto_reply' value='false' to disable auto-drafting), scope='loop' is reserved for internal use.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				scope: z
+					.enum(["sender", "instruction", "preference", "loop"])
+					.describe("Memory category"),
+				key: z
+					.string()
+					.describe("Unique key within the scope, e.g. sender email address or setting name"),
+				value: z.string().describe("The value to store"),
+				ttlDays: z
+					.number()
+					.optional()
+					.describe("Optional TTL in days — omit for permanent storage"),
+			},
+			async ({ mailboxId, scope, key, value, ttlDays }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				const result = await toolBrainRemember(env, mailboxId, scope, key, value, ttlDays);
+				return mcpText(result);
+			},
+		);
+
+		// ── brain_recall ───────────────────────────────────────────
+		this.server.tool(
+			"brain_recall",
+			"Retrieve facts from the mailbox brain memory. If key is provided, returns just that entry. If omitted, returns all entries in the scope.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				scope: z
+					.enum(["sender", "instruction", "preference", "loop"])
+					.describe("Memory category to query"),
+				key: z
+					.string()
+					.optional()
+					.describe("Specific key to look up — omit to list all keys in scope"),
+			},
+			async ({ mailboxId, scope, key }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				const result = await toolBrainRecall(env, mailboxId, scope, key);
+				return mcpText(result);
+			},
+		);
+
+		// ── brain_summary ──────────────────────────────────────────
+		this.server.tool(
+			"brain_summary",
+			"Return a summary of all active brain memories for a mailbox — sender notes, instructions, preferences, and loop counters.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+			},
+			async ({ mailboxId }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				const result = await toolBrainSummary(env, mailboxId);
 				return mcpText(result);
 			},
 		);

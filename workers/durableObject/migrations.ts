@@ -168,4 +168,21 @@ export const mailboxMigrations: Migration[] = [
             CREATE INDEX IF NOT EXISTS idx_emails_folder_date ON emails(folder_id, date DESC);
         `,
 	},
+	{
+		name: "9_add_brain_memory",
+		sql: txn(`
+			CREATE TABLE IF NOT EXISTS mb_brain (
+				id         TEXT PRIMARY KEY,
+				scope      TEXT NOT NULL,
+				key        TEXT NOT NULL,
+				value      TEXT NOT NULL DEFAULT '',
+				expires_at TEXT,
+				created_at TEXT NOT NULL DEFAULT (datetime('now')),
+				updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+			);
+			CREATE INDEX IF NOT EXISTS idx_mb_brain_scope     ON mb_brain(scope);
+			CREATE INDEX IF NOT EXISTS idx_mb_brain_scope_key ON mb_brain(scope, key);
+			CREATE INDEX IF NOT EXISTS idx_mb_brain_expires   ON mb_brain(expires_at);
+		`),
+	},
 ];

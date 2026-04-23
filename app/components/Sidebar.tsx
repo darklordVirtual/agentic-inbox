@@ -11,6 +11,7 @@ import {
 	PaperPlaneTiltIcon,
 	PencilSimpleIcon,
 	PlusIcon,
+	ScalesIcon,
 	TrashIcon,
 	TrayIcon,
 } from "@phosphor-icons/react";
@@ -200,6 +201,21 @@ export default function Sidebar() {
 						))}
 					</div>
 				)}
+
+				{/* Debt Control plugin */}
+				<div className="pt-5">
+					<div className="px-3 mb-1.5">
+						<span className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle">
+							Plugins
+						</span>
+					</div>
+					<FolderLink
+						to={`/mailbox/${mailboxId}/debt`}
+						icon={<ScalesIcon size={18} weight="regular" />}
+						label="Gjeldsoversikt"
+						onClick={handleNavClick}
+					/>
+				</div>
 
 				{/* Add folder button when no custom folders */}
 				{customFolders.length === 0 && (

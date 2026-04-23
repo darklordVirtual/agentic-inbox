@@ -27,6 +27,7 @@ import {
 	buildThreadingHeaders,
 } from "./email-helpers";
 import { verifyDraft } from "./ai";
+import { extractPdfText, buildAttachmentKey } from "./pdf";
 import { sendEmail } from "../email-sender";
 import { Folders } from "../../shared/folders";
 import type { Env } from "../types";
@@ -47,6 +48,94 @@ type RateLimitStub = {
 
 export async function toolListMailboxes(env: Env) {
 	return listMailboxes(env.BUCKET);
+}
+
+// ── brain_remember ─────────────────────────────────────────────────
+
+export async function toolBrainRemember(
+	env: Env,
+	mailboxId: string,
+	scope: string,
+	key: string,
+	value: string,
+	ttlDays?: number,
+): Promise<{ status: string; scope: string; key: string }> {
+	const stub = getMailboxStub(env, mailboxId);
+	await stub.brainRemember(scope, key, value, ttlDays);
+	return { status: "stored", scope, key };
+}
+
+// ── brain_recall ───────────────────────────────────────────────────
+
+export async function toolBrainRecall(
+	env: Env,
+	mailboxId: string,
+	scope: string,
+	key?: string,
+): Promise<{ memories: { scope: string; key: string; value: string; updatedAt: string }[] }> {
+	const stub = getMailboxStub(env, mailboxId);
+	const memories = await stub.brainRecall(scope, key);
+	return { memories };
+}
+
+// ── brain_summary ──────────────────────────────────────────────────
+
+export async function toolBrainSummary(
+	env: Env,
+	mailboxId: string,
+): Promise<{ summary: string }> {
+	const stub = getMailboxStub(env, mailboxId);
+	const summary = await stub.brainSummary();
+	return { summary };
+}
+
+// ── is_no_reply ────────────────────────────────────────────────────
+
+/** Detect no-reply / automated-sender addresses. */
+export function isNoReplyAddress(email: string): boolean {
+	const local = (email.split("@")[0] ?? email).toLowerCase();
+	return /\b(?:no.?reply|noreply|do.?not.?reply|donotreply|bounce|mailer-daemon|postmaster|devnull|blackhole|notifications?|auto-?(?:respond|response|reply|bot|notify))\b/.test(local);
+}
+
+// ── read_attachment ────────────────────────────────────────────────
+
+/**
+ * Fetch an email attachment from R2 and return its text content.
+ *
+ * For PDF files the text is extracted from the PDF byte stream.
+ * For plain-text files the raw UTF-8 content is returned.
+ * Binary files that are neither PDF nor text return an error.
+ */
+export async function toolReadAttachment(
+	env: Env,
+	mailboxId: string,
+	emailId: string,
+	attachmentId: string,
+	filename: string,
+): Promise<{ text: string; filename: string; chars: number } | { error: string }> {
+	const key = buildAttachmentKey(emailId, attachmentId, filename);
+
+	const lowerName = filename.toLowerCase();
+	const isPdf  = lowerName.endsWith(".pdf");
+	const isText = /\.(txt|csv|md|log|xml|json|html?|eml)$/.test(lowerName);
+
+	if (isPdf) {
+		const text = await extractPdfText(env.BUCKET, key);
+		if (!text) {
+			return { error: "Could not extract text from PDF. It may be a scanned/image-only PDF." };
+		}
+		return { text, filename, chars: text.length };
+	}
+
+	if (isText) {
+		const obj = await env.BUCKET.get(key);
+		if (!obj) return { error: "Attachment not found" };
+		const raw = await obj.text();
+		const truncated = raw.slice(0, 8000);
+		return { text: truncated, filename, chars: truncated.length };
+	}
+
+	return { error: `Cannot read attachment "${filename}": unsupported type. Only PDF and plain-text files can be read.` };
 }
 
 // ── list_emails ────────────────────────────────────────────────────

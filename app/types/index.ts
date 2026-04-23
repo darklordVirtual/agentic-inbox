@@ -13,6 +13,8 @@ export interface MailboxSettings {
 	forwarding?: { enabled: boolean; email: string };
 	signature?: SignatureSettings;
 	autoReply?: { enabled: boolean; subject: string; message: string };
+	/** When false, the AI agent will not auto-draft replies on new email arrival. Defaults to true. */
+	agentAutoReply?: boolean;
 	agentSystemPrompt?: string;
 }
 

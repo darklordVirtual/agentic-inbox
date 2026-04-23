@@ -23,6 +23,13 @@ export interface PluginContext {
 
 // ── Hooks ─────────────────────────────────────────────────────────
 
+export interface AttachmentPayloadItem {
+	id: string;
+	filename: string;
+	mimetype: string;
+	size: number;
+}
+
 export interface OnEmailReceivedPayload {
 	emailId: string;
 	subject: string;
@@ -30,7 +37,8 @@ export interface OnEmailReceivedPayload {
 	recipient: string;
 	body: string | null;
 	date: string;
-	attachmentIds: string[];
+	/** Full attachment metadata — use id + filename to build the R2 key. */
+	attachments: AttachmentPayloadItem[];
 }
 
 export interface OnMessageOpenedPayload {

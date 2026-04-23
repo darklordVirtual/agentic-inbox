@@ -1,12 +1,14 @@
 /**
  * Hook: onEmailReceived
  *
- * Triggered after each new email is stored. Classifies the email
- * and creates/updates a DebtCase if relevant.
+ * Triggered after each new email is stored. Extracts text from any PDF
+ * attachments, classifies the email (with AI fallback when regex is
+ * inconclusive), and creates/updates a DebtCase if relevant.
  */
 
 import type { OnEmailReceivedPayload, PluginContext } from "../../../workers/plugins/types";
-import { classifyEmail } from "../domain/classification-engine";
+import { extractPdfText, buildAttachmentKey } from "../../../workers/lib/pdf";
+import { classifyEmail, classifyEmailWithAI } from "../domain/classification-engine";
 import { processEmail } from "../domain/case-engine";
 import { runLegalityChecks } from "../domain/legality-engine";
 import { findingsRepo } from "../storage/repos/findings.repo";
@@ -21,6 +23,9 @@ const RELEVANT_KINDS = new Set([
 	"court_letter",
 ]);
 
+/** Minimum regex confidence below which we ask the AI to classify instead. */
+const AI_FALLBACK_THRESHOLD = 0.45;
+
 export async function onEmailReceived(
 	payload: OnEmailReceivedPayload,
 	ctx: PluginContext,
@@ -28,22 +33,56 @@ export async function onEmailReceived(
 	const settings = settingsRepo.get(ctx.sql);
 	if (!settings.enabled || !settings.autoClassify) return;
 
-	const classification = classifyEmail(payload.subject, payload.body ?? "");
+	// ── 1. Extract text from PDF attachments ────────────────────────
+	const pdfTexts: string[] = [];
+	const pdfAttachmentIds: string[] = [];
+
+	for (const att of payload.attachments) {
+		if (att.mimetype === "application/pdf" || att.filename.toLowerCase().endsWith(".pdf")) {
+			const key = buildAttachmentKey(payload.emailId, att.id, att.filename);
+			const text = await extractPdfText(ctx.env.BUCKET, key);
+			if (text) {
+				pdfTexts.push(text);
+				pdfAttachmentIds.push(att.id);
+				console.log(`[debt-control] Extracted ${text.length} chars from PDF: ${att.filename}`);
+			}
+		}
+	}
+
+	// ── 2. Classify using deterministic rules ────────────────────────
+	let classification = classifyEmail(payload.subject, payload.body ?? "", pdfTexts);
+
+	// ── 3. AI fallback when regex confidence is too low ──────────────
+	if (classification.confidence < AI_FALLBACK_THRESHOLD) {
+		console.log(`[debt-control] Low regex confidence (${classification.confidence}), trying AI classification`);
+		const aiResult = await classifyEmailWithAI(
+			ctx.env.AI,
+			payload.subject,
+			payload.body ?? "",
+			pdfTexts,
+		);
+		if (aiResult && aiResult.confidence > classification.confidence) {
+			classification = aiResult;
+		}
+	}
 
 	// Only process email kinds that are relevant to debt
 	if (!RELEVANT_KINDS.has(classification.kind)) return;
 
+	// ── 4. Create/update case and document ──────────────────────────
 	const result = processEmail(ctx.sql, {
-		emailId:       payload.emailId,
-		mailboxId:     ctx.mailboxId,
+		emailId:        payload.emailId,
+		mailboxId:      ctx.mailboxId,
 		classification,
-		bodyText:      payload.body ?? "",
+		bodyText:       payload.body ?? "",
+		attachmentTexts: pdfTexts,
+		attachmentIds:  pdfAttachmentIds,
 	});
 
-	// Run legality checks and persist findings
-	const docs     = [result.document];
-	const findings = runLegalityChecks(result.case, docs);
+	// ── 5. Run legality checks and persist findings ──────────────────
+	const findings = runLegalityChecks(result.case, [result.document]);
 	for (const f of findings) {
 		findingsRepo.upsert(ctx.sql, f);
 	}
 }
+

@@ -14,6 +14,7 @@ import ThreadMessage from "~/components/email-panel/ThreadMessage";
 import { splitEmailList, toEmailListValue } from "~/lib/utils";
 import api from "~/services/api";
 import { useDeleteEmail, useEmail, useMoveEmail, useReplyToEmail, useSendEmail, useThreadReplies, useUpdateEmail } from "~/queries/emails";
+import { DebtSidebarCard } from "../../plugins/debt-control/ui/components/DebtSidebarCard";
 import { useFolders } from "~/queries/folders";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
@@ -216,6 +217,12 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 					/>
 				)}
 			</div>
+
+			{mailboxId && (
+				<div className="px-5 pb-5">
+					<DebtSidebarCard mailboxId={mailboxId} emailId={email.id} />
+				</div>
+			)}
 
 			<EmailPanelDialogs
 				sourceViewEmail={sourceViewEmail}

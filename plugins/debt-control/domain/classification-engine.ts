@@ -138,11 +138,22 @@ function extractCreditor(subject: string, body: string): string | null {
 
 // ── Main classification function ──────────────────────────────────
 
+/**
+ * Classify an email using deterministic text patterns.
+ *
+ * @param subject - The email subject line.
+ * @param body    - The email body (plain text or HTML stripped).
+ * @param attachmentTexts - Optional extracted text from PDF/document attachments.
+ *                          These are concatenated into the classification corpus,
+ *                          so KID numbers, amounts, and creditor names in attached
+ *                          invoices are also matched.
+ */
 export function classifyEmail(
 	subject: string,
 	body: string,
+	attachmentTexts?: string[],
 ): ClassificationResult {
-	const combined = `${subject}\n${body}`;
+	const combined = [subject, body, ...(attachmentTexts ?? [])].join("\n");
 
 	let matchedKind: DocumentKind = "unknown";
 	let matchedPatterns = 0;
@@ -155,15 +166,20 @@ export function classifyEmail(
 		}
 	}
 
+	// Use all available text for field extraction so values inside PDFs are found
 	const amountDue = extractAmount(combined);
-	const dueDate = extractDueDate(combined);
+	const dueDate   = extractDueDate(combined);
 	const reference = extractReference(combined);
-	const creditor = extractCreditor(subject, body);
+	const creditor  = extractCreditor(subject, combined);
 
 	// Confidence: based on pattern hits (0.3 base + 0.15 per hit, max 1)
 	const confidence = matchedKind === "unknown"
 		? 0
 		: Math.min(0.3 + matchedPatterns * 0.15, 1);
+
+	const sourceSuffix = (attachmentTexts?.length ?? 0) > 0
+		? " (including attachment text)"
+		: "";
 
 	return {
 		kind: matchedKind,
@@ -175,6 +191,88 @@ export function classifyEmail(
 		confidence,
 		reasoning: matchedKind === "unknown"
 			? "No matching patterns found."
-			: `Matched ${matchedPatterns} pattern(s) for kind "${matchedKind}".`,
+			: `Matched ${matchedPatterns} pattern(s) for kind "${matchedKind}"${sourceSuffix}.`,
 	};
+}
+
+// ── AI classification fallback ─────────────────────────────────
+
+const VALID_KINDS = new Set<DocumentKind>([
+	"initial_demand",
+	"reminder",
+	"collection_notice",
+	"collection_demand",
+	"legal_notice",
+	"court_letter",
+	"debt_settlement",
+	"payment_confirmation",
+	"unknown",
+]);
+
+const AI_CLASSIFY_PROMPT = `Du er et klassifiseringssystem for norske gjeldsdokumenter.
+Analyser teksten nedenfor og klassifiser dokumentet som én av følgende verdier:
+
+initial_demand    - Første kravbrev eller faktura
+reminder          - Purring eller betalingspåminnelse
+collection_notice - Inkassovarsel
+collection_demand - Inkassokrav
+legal_notice      - Rettslig varsel
+court_letter      - Stevning eller forliksklage
+debt_settlement   - Gjeldsforlik eller nedbetalingsavtale
+payment_confirmation - Betalingsbekreftelse eller kvittering
+unknown           - Ingen av de over
+
+Svar KUN med ett av disse ordene. Ingen forklaring.`;
+
+/**
+ * AI-powered classification fallback.
+ *
+ * Called when regex confidence is too low to make a reliable determination
+ * (e.g. the email body is sparse but the PDF contains the relevant contents).
+ * Returns a ClassificationResult with confidence 0.65, or null on failure.
+ */
+export async function classifyEmailWithAI(
+	ai: Ai,
+	subject: string,
+	body: string,
+	attachmentTexts?: string[],
+): Promise<ClassificationResult | null> {
+	const corpus = [subject, body, ...(attachmentTexts ?? [])]
+		.join("\n")
+		.slice(0, 3000);
+
+	if (corpus.trim().length < 20) return null;
+
+	try {
+		const response = (await ai.run(
+			// @ts-expect-error — model string not in generated union
+			"@cf/meta/llama-3.1-8b-instruct-fast",
+			{
+				messages: [
+					{ role: "system", content: AI_CLASSIFY_PROMPT },
+					{ role: "user",   content: corpus },
+				],
+				max_tokens: 20,
+				temperature: 0,
+			},
+		)) as { response?: string };
+
+		const raw = (response?.response ?? "").trim().toLowerCase() as DocumentKind;
+		if (!VALID_KINDS.has(raw) || raw === "unknown") return null;
+
+		// Re-run field extraction on the full corpus with the AI-determined kind
+		const combined = [subject, body, ...(attachmentTexts ?? [])].join("\n");
+		return {
+			kind:        raw,
+			creditor:    extractCreditor(subject, combined),
+			reference:   extractReference(combined),
+			amountDue:   extractAmount(combined),
+			currency:    "NOK",
+			dueDate:     extractDueDate(combined),
+			confidence:  0.65,
+			reasoning:   `AI classification: "${raw}" (regex was inconclusive).`,
+		};
+	} catch {
+		return null;
+	}
 }

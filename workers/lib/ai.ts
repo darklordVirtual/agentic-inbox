@@ -7,9 +7,43 @@
  *
  * - isPromptInjection: scans email bodies for malicious prompt injection.
  * - verifyDraft: reviews draft email bodies and removes agent/system artifacts.
+ * - stripModelArtifacts: removes model-specific tokens that leak into text output.
  */
 
 import { escapeHtml, stripHtmlToText, textToHtml } from "./email-helpers";
+
+// ── Model artifact stripping ───────────────────────────────────────
+
+/**
+ * Strip model-specific special tokens and tool-call markup that Kimi K2.5 /
+ * other models occasionally leak into their text output.
+ *
+ * This handles patterns like:
+ *   <|tool_calls_section_begin|>...<|tool_calls_section_end|>
+ *   <|tool_call_begin|>...<|tool_call_end|>
+ *   <|im_start|>, <|im_end|>, etc.
+ */
+export function stripModelArtifacts(text: string): string {
+	if (!text) return text;
+
+	let cleaned = text;
+
+	// Strip Kimi/MoonShot tool-call block (entire section incl. content)
+	cleaned = cleaned.replace(
+		/<\|tool_calls_section_begin\|>[\s\S]*?<\|tool_calls_section_end\|>/g,
+		"",
+	);
+	// Strip stray individual tool-call markers
+	cleaned = cleaned.replace(/<\|tool_call_begin\|>[\s\S]*?<\|tool_call_end\|>/gi, "");
+
+	// Strip any remaining <|...|> special tokens (e.g. <|im_start|>, <|im_end|>)
+	cleaned = cleaned.replace(/<\|[a-z_]+\|>/gi, "");
+
+	// Strip lines that look like raw function call JSON: functions{...}
+	cleaned = cleaned.replace(/^functions\{[\s\S]*?\}\s*$/gm, "");
+
+	return cleaned.trim();
+}
 
 // ── Prompt Injection Scanner ───────────────────────────────────────
 
@@ -118,21 +152,31 @@ function splitQuotedBlock(html: string): { reply: string; quoted: string } {
 /**
  * Verify and clean a draft email body using AI.
  * Falls back to returning the original body if the AI call fails.
+ *
+ * Step 0: strip model-specific tokens (Kimi tool-call markup, etc.) BEFORE
+ * any other processing so the verifier never sees raw `<|tool_call_begin|>`
+ * tokens that would confuse it into treating the whole body as an artifact.
  */
 export async function verifyDraft(ai: Ai, body: string): Promise<string> {
 	if (!body || !body.trim()) return body;
 
+	// ── 0. Strip model-specific artifact tokens first ──────────────
+	const stripped = stripModelArtifacts(body);
+
+	// If stripping removed everything meaningful, signal empty-body
+	if (!stripped || !stripped.trim()) return "";
+
 	// Separate the quoted reply block so the AI only reviews the user's text
-	const isHtml = /<[a-z][\s\S]*>/i.test(body);
+	const isHtml = /<[a-z][\s\S]*>/i.test(stripped);
 	const { reply: replyHtml, quoted: quotedBlock } = isHtml
-		? splitQuotedBlock(body)
-		: { reply: body, quoted: "" };
+		? splitQuotedBlock(stripped)
+		: { reply: stripped, quoted: "" };
 
 	// Extract plain text of just the reply portion
 	const replyText = isHtml ? stripHtmlToText(replyHtml) : replyHtml;
 
 	// Skip very short replies — nothing to verify
-	if (replyText.trim().length < 20) return body;
+	if (replyText.trim().length < 20) return stripped;
 
 	try {
 		const response = (await ai.run(
