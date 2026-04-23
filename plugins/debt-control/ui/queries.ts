@@ -16,12 +16,19 @@ export function useDebtSettings(mailboxId: string | undefined) {
 	});
 }
 
-export function useUpdateDebtSettings(mailboxId: string) {
+export function useUpdateDebtSettings(
+	mailboxId: string,
+	callbacks?: { onSuccess?: () => void; onError?: (err: Error) => void },
+) {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (patch: Parameters<typeof api.updateSettings>[1]) =>
 			api.updateSettings(mailboxId, patch),
-		onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.settings(mailboxId) }),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: KEYS.settings(mailboxId) });
+			callbacks?.onSuccess?.();
+		},
+		onError: (err: Error) => callbacks?.onError?.(err),
 	});
 }
 

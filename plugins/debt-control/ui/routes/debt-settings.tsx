@@ -16,10 +16,10 @@ const { mailboxId } = useParams<{ mailboxId: string }>();
 const toastManager = useKumoToastManager();
 const { data: settings, isLoading } = useDebtSettings(mailboxId);
 const update = useUpdateDebtSettings(mailboxId!, {
-onSuccess: () => toastManager.add({ title: "Innstillinger lagret", variant: "success" }),
-onError: (err: Error) =>
-toastManager.add({ title: "Feil ved lagring", description: err.message, variant: "error" }),
-});
+		onSuccess: () => toastManager.add({ title: "Innstillinger lagret" }),
+		onError: (err: Error) =>
+			toastManager.add({ title: "Feil ved lagring", description: err.message, variant: "error" }),
+	});
 
 if (isLoading || !settings) {
 return (
