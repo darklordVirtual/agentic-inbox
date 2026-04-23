@@ -10,6 +10,7 @@ import * as schema from "../db/schema";
 import { Folders } from "../../shared/folders";
 import type { Env } from "../types";
 import { applyMigrations, mailboxMigrations } from "./migrations";
+import { pluginRegistry } from "../plugins/loader";
 
 /**
  * SQL expression to normalize email subjects by stripping common
@@ -107,6 +108,17 @@ export class MailboxDO extends DurableObject<Env> {
 		super(state, env);
 		this.db = drizzle(this.ctx.storage, { schema });
 		applyMigrations(this.ctx.storage.sql, mailboxMigrations, this.ctx.storage);
+		// Apply migrations registered by all plugins
+		pluginRegistry.applyMigrations(this.ctx.storage.sql, this.ctx.storage);
+	}
+
+	/**
+	 * Expose raw SQL storage to plugins.
+	 * Plugins apply their own migrations and run queries against the same
+	 * per-mailbox SQLite database without touching core Drizzle schema.
+	 */
+	async getSql(): Promise<SqlStorage> {
+		return this.ctx.storage.sql;
 	}
 
 	// ── Email CRUD (Drizzle) ───────────────────────────────────────

@@ -9,6 +9,8 @@ import { createRequestHandler } from "react-router";
 import { app as apiApp, receiveEmail } from "./index";
 import { EmailMCP } from "./mcp";
 import type { Env } from "./types";
+// Register all plugins (side effect — must run before any request handling)
+import "./plugins/register";
 
 export { MailboxDO } from "./durableObject";
 export { EmailAgent } from "./agent";

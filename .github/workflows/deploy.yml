@@ -1,0 +1,53 @@
+name: Deploy to Cloudflare Workers
+
+# Runs automatically on every push to main.
+# Can also be triggered manually from the Actions tab.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      # All credentials come from GitHub Secrets — nothing sensitive is stored in the repo.
+      # DOMAINS is a non-sensitive GitHub Actions Variable (Settings → Variables → Actions).
+      # POLICY_AUD and TEAM_DOMAIN are set as Worker secrets via the 'secrets' input below.
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --var "DOMAINS:${{ vars.DOMAINS }}"
+          secrets: |
+            POLICY_AUD
+            TEAM_DOMAIN
+        env:
+          POLICY_AUD: ${{ secrets.POLICY_AUD }}
+          TEAM_DOMAIN: ${{ secrets.TEAM_DOMAIN }}

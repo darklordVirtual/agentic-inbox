@@ -20,6 +20,7 @@ import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { Folders } from "../shared/folders";
 import type { Env } from "./types";
 import { requireMailbox, type MailboxContext } from "./lib/mailbox";
+import { pluginRegistry } from "./plugins/loader";
 
 type AppContext = Context<MailboxContext>;
 
@@ -82,6 +83,10 @@ app.use("/api/*", cors({
 	},
 }));
 app.use("/api/v1/mailboxes/:mailboxId/*", requireMailbox);
+
+// -- Plugin routes (mounted per-mailbox under /api/v1/mailboxes/:mailboxId/) --
+// Each plugin gets a sub-app at /api/v1/mailboxes/:mailboxId/api/plugins/:pluginId/
+pluginRegistry.mountRoutes(app);
 
 // -- Config ---------------------------------------------------------
 
@@ -401,6 +406,27 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 		in_reply_to: inReplyTo, email_references: emailReferences.length > 0 ? JSON.stringify(emailReferences) : null,
 		thread_id: threadId, message_id: originalMessageId, raw_headers: JSON.stringify(parsedEmail.headers),
 	}, attachmentData);
+
+	// Dispatch plugin hooks (fire-and-forget; errors are caught inside dispatcher)
+	ctx.waitUntil((async () => {
+		try {
+			const sql = await stub.getSql();
+			await pluginRegistry.dispatchEmailReceived(
+				{
+					emailId:       messageId,
+					subject:       parsedEmail.subject || "",
+					sender:        (parsedEmail.from?.address || "").toLowerCase(),
+					recipient:     allRecipients.join(", "),
+					body:          parsedEmail.text || parsedEmail.html || null,
+					date:          new Date().toISOString(),
+					attachmentIds: attachmentData.map((a) => a.id),
+				},
+				{ mailboxId, sql, env },
+			);
+		} catch (e) {
+			console.error("[plugins] hook dispatch error:", (e as Error).message);
+		}
+	})());
 
 	const agentStub = env.EMAIL_AGENT.get(env.EMAIL_AGENT.idFromName(mailboxId));
 	ctx.waitUntil(agentStub.fetch(new Request("https://agents/onNewEmail", {

@@ -15,6 +15,11 @@ export default [
 		route("emails/:folder", "routes/email-list.tsx"),
 		route("settings", "routes/settings.tsx"),
 		route("search", "routes/search-results.tsx"),
+		// Debt Control plugin routes
+		route("debt", "../plugins/debt-control/ui/routes/debt-dashboard.tsx"),
+		route("debt/cases/:caseId", "../plugins/debt-control/ui/routes/debt-case.tsx"),
+		route("debt/settings", "../plugins/debt-control/ui/routes/debt-settings.tsx"),
+		route("debt/bank", "../plugins/debt-control/ui/routes/bank-settings.tsx"),
 	]),
 	route("*", "routes/not-found.tsx"),
 ] satisfies RouteConfig;
