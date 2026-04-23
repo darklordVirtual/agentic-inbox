@@ -91,22 +91,16 @@ function ProviderKeyForm({
 	}
 
 	return (
-		<div className="flex items-center gap-2">
-			{!provider.hasKey && (
-				<Badge variant="secondary">
-					<XIcon size={12} className="mr-1" />
-					No key
-				</Badge>
-			)}
+		<div className="space-y-2">
 			{(editing || !provider.hasKey) && (
-				<>
-					<div className="relative">
+				<div className="flex items-center gap-2">
+					<div className="relative flex-1">
 						<Input
 							type={showKey ? "text" : "password"}
-							placeholder={`sk-...`}
+							placeholder="Paste your API key here…"
 							value={key}
 							onChange={(e) => setKey(e.target.value)}
-							className="w-64 font-mono text-sm"
+							className="w-full font-mono text-sm pr-9"
 						/>
 						<button
 							type="button"
@@ -129,7 +123,7 @@ function ProviderKeyForm({
 							Cancel
 						</Button>
 					)}
-				</>
+				</div>
 			)}
 		</div>
 	);
@@ -233,42 +227,44 @@ function ProviderCard({
 	const [expanded, setExpanded] = useState(false);
 
 	return (
-		<div className="px-4 py-4 bg-kumo-surface">
-			<div className="flex items-start justify-between gap-4">
-				<div className="flex-1 min-w-0">
-					<div className="flex items-center gap-2 flex-wrap">
-						<span className="font-medium text-kumo-default">{provider.name}</span>
-						{!provider.requiresKey && (
-							<Badge variant="success" className="text-xs">No key required</Badge>
-						)}
-						{provider.requiresKey && provider.hasKey && (
-							<Badge variant="success" className="text-xs">
-								<CheckIcon size={10} className="mr-1" />
-								Key set
-							</Badge>
-						)}
-					</div>
-					<div className="text-sm text-kumo-subtle mt-0.5">{provider.description}</div>
-					<button
-						type="button"
-						onClick={() => setExpanded((x) => !x)}
-						className="text-xs text-kumo-brand hover:text-kumo-brand-hover flex items-center gap-1 mt-1 cursor-pointer"
-					>
-						{expanded ? <CaretUpIcon size={12} /> : <CaretDownIcon size={12} />}
-						{provider.models.length} model{provider.models.length !== 1 ? "s" : ""}
-						{provider.models.some((m) => m.recommended) && !expanded && (
-							<span className="ml-1 text-emerald-600">
-								· Recommended: {provider.models.find((m) => m.recommended)?.name}
-							</span>
-						)}
-					</button>
-				</div>
-				<div className="shrink-0">
-					{mailboxId && (
-						<ProviderKeyForm provider={provider} mailboxId={mailboxId} />
+		<div className="px-4 py-4 bg-kumo-surface space-y-3">
+			{/* Provider name + badges + description */}
+			<div>
+				<div className="flex items-center gap-2 flex-wrap">
+					<span className="font-medium text-kumo-default">{provider.name}</span>
+					{!provider.requiresKey && (
+						<Badge variant="success" className="text-xs">No key required</Badge>
+					)}
+					{provider.requiresKey && provider.hasKey && (
+						<Badge variant="success" className="text-xs">
+							<CheckIcon size={10} className="mr-1" />
+							Key set
+						</Badge>
+					)}
+					{provider.requiresKey && !provider.hasKey && (
+						<Badge variant="secondary" className="text-xs">No key</Badge>
 					)}
 				</div>
+				<div className="text-sm text-kumo-subtle mt-0.5">{provider.description}</div>
+				<button
+					type="button"
+					onClick={() => setExpanded((x) => !x)}
+					className="text-xs text-kumo-brand hover:text-kumo-brand-hover flex items-center gap-1 mt-1 cursor-pointer"
+				>
+					{expanded ? <CaretUpIcon size={12} /> : <CaretDownIcon size={12} />}
+					{provider.models.length} model{provider.models.length !== 1 ? "s" : ""}
+					{provider.models.some((m) => m.recommended) && !expanded && (
+						<span className="ml-1 text-emerald-600">
+							· Recommended: {provider.models.find((m) => m.recommended)?.name}
+						</span>
+					)}
+				</button>
 			</div>
+
+			{/* Key form — full width underneath */}
+			{mailboxId && (
+				<ProviderKeyForm provider={provider} mailboxId={mailboxId} />
+			)}
 
 			{/* Expandable model list */}
 			{expanded && (
