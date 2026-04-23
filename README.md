@@ -5,8 +5,8 @@
     <a href="https://github.com/cloudflare/agentic-inbox">
       <img src="https://img.shields.io/badge/upstream-cloudflare%2Fagentic--inbox-blue?logo=cloudflare" alt="Upstream" />
     </a>
-    <a href="https://github.com/notapersona/agentic-inbox/actions/workflows/deploy.yml">
-      <img src="https://github.com/notapersona/agentic-inbox/actions/workflows/deploy.yml/badge.svg" alt="Deploy status" />
+    <a href="https://github.com/darklordVirtual/agentic-inbox/actions/workflows/deploy.yml">
+      <img src="https://github.com/darklordVirtual/agentic-inbox/actions/workflows/deploy.yml/badge.svg" alt="Deploy status" />
     </a>
   </p>
 </div>
@@ -57,7 +57,7 @@ All plugins, the extended provider system, and the UI improvements in this fork 
 
 ### Option A — One-click (fastest, no terminal needed)
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/notapersona/agentic-inbox)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/darklordVirtual/agentic-inbox)
 
 Cloudflare provisions R2, Durable Objects, and Workers AI automatically. You'll be prompted for your **domain** (e.g. `example.com`).
 
@@ -593,7 +593,7 @@ pluginRegistry.register(myPlugin);
 ## Credits
 
 - **Core email client, Durable Object architecture, MCP server, AI agent, Email Routing integration** — [Cloudflare](https://github.com/cloudflare/agentic-inbox) (Apache 2.0)
-- **Plugins (Debt Control, AI Agents), extended provider system, UI improvements** — [Stian Skogbrott](https://github.com/notapersona)
+- **Plugins (Debt Control, AI Agents), extended provider system, UI improvements** — [Stian Skogbrott](https://github.com/darklordVirtual)
 
 ## License
 
