@@ -12,7 +12,8 @@ interface Props {
 }
 
 export function DebtSidebarCard({ mailboxId, emailId }: Props) {
-	const { data: cases = [] } = useDebtCases(mailboxId);
+	const { data } = useDebtCases(mailboxId);
+	const cases = Array.isArray(data) ? data : [];
 
 	// Find cases where this email is the first or last linked email
 	const linked = cases.filter(

@@ -81,7 +81,8 @@ function FolderLink({
 export default function Sidebar() {
 	const { mailboxId } = useParams<{ mailboxId: string }>();
 	const navigate = useNavigate();
-	const { data: folders = [] } = useFolders(mailboxId);
+	const { data: foldersData } = useFolders(mailboxId);
+	const folders = Array.isArray(foldersData) ? foldersData : [];
 	const createFolderMutation = useCreateFolder();
 	const { startCompose, closeSidebar } = useUIStore();
 	const { data: currentMailbox } = useMailbox(mailboxId);

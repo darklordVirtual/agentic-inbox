@@ -41,7 +41,8 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const moveEmailMut = useMoveEmail();
 	const sendEmailMut = useSendEmail();
 	const replyMut = useReplyToEmail();
-	const { data: folders = [] } = useFolders(mailboxId) as { data?: Folder[] };
+	const { data: foldersData } = useFolders(mailboxId) as { data?: Folder[] };
+	const folders = Array.isArray(foldersData) ? foldersData : [];
 	const { data: currentMailbox } = useMailbox(mailboxId) as {
 		data?: Mailbox;
 	};
@@ -54,7 +55,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const isDraftFolder = folder === Folders.DRAFT;
 
 	const threadReplies = useMemo(() => {
-		if (!threadRepliesRaw || !email) return [];
+		if (!Array.isArray(threadRepliesRaw) || !email) return [];
 		return threadRepliesRaw.filter((e) => e.id !== email.id);
 	}, [threadRepliesRaw, email]);
 
