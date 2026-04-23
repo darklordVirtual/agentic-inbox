@@ -14,7 +14,7 @@ function row(r: Record<string, unknown>): Finding {
 
 export const findingsRepo = {
 	findByCaseId(sql: SqlStorage, caseId: string): Finding[] {
-		return [...sql.exec<Record<string, unknown>>(
+		return [...sql.exec<Record<string, SqlStorageValue>>(
 			`SELECT * FROM dc_findings WHERE case_id = ? ORDER BY detected_at DESC`,
 			caseId,
 		)].map(row);

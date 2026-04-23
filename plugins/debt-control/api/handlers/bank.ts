@@ -11,8 +11,8 @@ type C = Context<MailboxContext>;
 /** Read SB1 secrets from environment — never from request body. */
 function sb1Secrets(env: Cloudflare.Env) {
 	return {
-		clientId:    (env as Record<string, string>)["SB1_CLIENT_ID"]    ?? "",
-		accessToken: (env as Record<string, string>)["SB1_ACCESS_TOKEN"] ?? "",
+		clientId:    (env as unknown as Record<string, string>)["SB1_CLIENT_ID"]    ?? "",
+		accessToken: (env as unknown as Record<string, string>)["SB1_ACCESS_TOKEN"] ?? "",
 	};
 }
 

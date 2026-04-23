@@ -21,7 +21,7 @@ function row(r: Record<string, unknown>): DebtCase {
 
 export const casesRepo = {
 	findById(sql: SqlStorage, id: string): DebtCase | null {
-		const [r] = [...sql.exec<Record<string, unknown>>(
+		const [r] = [...sql.exec<Record<string, SqlStorageValue>>(
 			`SELECT * FROM dc_cases WHERE id = ?`,
 			id,
 		)];
@@ -35,7 +35,7 @@ export const casesRepo = {
 		reference: string | null,
 	): DebtCase | null {
 		if (reference) {
-			const [r] = [...sql.exec<Record<string, unknown>>(
+			const [r] = [...sql.exec<Record<string, SqlStorageValue>>(
 				`SELECT * FROM dc_cases WHERE mailbox_id = ? AND creditor = ? AND reference = ? LIMIT 1`,
 				mailboxId,
 				creditor,
@@ -44,7 +44,7 @@ export const casesRepo = {
 			if (r) return row(r);
 		}
 		// Fall back to most recent open case from same creditor
-		const [r] = [...sql.exec<Record<string, unknown>>(
+		const [r] = [...sql.exec<Record<string, SqlStorageValue>>(
 			`SELECT * FROM dc_cases WHERE mailbox_id = ? AND creditor = ? AND status = 'open' ORDER BY created_at DESC LIMIT 1`,
 			mailboxId,
 			creditor,
@@ -58,13 +58,13 @@ export const casesRepo = {
 		status?: CaseStatus,
 	): DebtCase[] {
 		if (status) {
-			return [...sql.exec<Record<string, unknown>>(
+			return [...sql.exec<Record<string, SqlStorageValue>>(
 				`SELECT * FROM dc_cases WHERE mailbox_id = ? AND status = ? ORDER BY updated_at DESC`,
 				mailboxId,
 				status,
 			)].map(row);
 		}
-		return [...sql.exec<Record<string, unknown>>(
+		return [...sql.exec<Record<string, SqlStorageValue>>(
 			`SELECT * FROM dc_cases WHERE mailbox_id = ? ORDER BY updated_at DESC`,
 			mailboxId,
 		)].map(row);

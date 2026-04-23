@@ -13,7 +13,7 @@ function defaults(): PluginSettings {
 
 export const settingsRepo = {
 	get(sql: SqlStorage): PluginSettings {
-		const [r] = [...sql.exec<Record<string, unknown>>(
+		const [r] = [...sql.exec<Record<string, SqlStorageValue>>(
 			`SELECT * FROM dc_settings WHERE id = ?`,
 			SINGLETON_ID,
 		)];

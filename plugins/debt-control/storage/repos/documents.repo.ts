@@ -16,14 +16,14 @@ function row(r: Record<string, unknown>): DebtDocument {
 
 export const documentsRepo = {
 	findByCaseId(sql: SqlStorage, caseId: string): DebtDocument[] {
-		return [...sql.exec<Record<string, unknown>>(
+		return [...sql.exec<Record<string, SqlStorageValue>>(
 			`SELECT * FROM dc_documents WHERE case_id = ? ORDER BY created_at ASC`,
 			caseId,
 		)].map(row);
 	},
 
 	findByEmailId(sql: SqlStorage, emailId: string): DebtDocument[] {
-		return [...sql.exec<Record<string, unknown>>(
+		return [...sql.exec<Record<string, SqlStorageValue>>(
 			`SELECT * FROM dc_documents WHERE email_id = ? ORDER BY created_at ASC`,
 			emailId,
 		)].map(row);

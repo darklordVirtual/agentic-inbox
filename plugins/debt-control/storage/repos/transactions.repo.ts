@@ -54,7 +54,7 @@ export const transactionsRepo = {
 	},
 
 	listByMailbox(sql: SqlStorage, mailboxId: string, limit = 200): BankTransaction[] {
-		return [...sql.exec<Record<string, unknown>>(
+		return [...sql.exec<Record<string, SqlStorageValue>>(
 			`SELECT * FROM dc_transactions WHERE mailbox_id = ? ORDER BY date DESC LIMIT ?`,
 			mailboxId,
 			limit,
@@ -62,7 +62,7 @@ export const transactionsRepo = {
 	},
 
 	findById(sql: SqlStorage, id: string): BankTransaction | null {
-		const [r] = [...sql.exec<Record<string, unknown>>(
+		const [r] = [...sql.exec<Record<string, SqlStorageValue>>(
 			`SELECT * FROM dc_transactions WHERE id = ?`,
 			id,
 		)];
@@ -87,7 +87,7 @@ function matchRow(r: Record<string, unknown>): PaymentMatch {
 
 export const paymentMatchesRepo = {
 	findByCaseId(sql: SqlStorage, caseId: string): PaymentMatch[] {
-		return [...sql.exec<Record<string, unknown>>(
+		return [...sql.exec<Record<string, SqlStorageValue>>(
 			`SELECT * FROM dc_payment_matches WHERE case_id = ? ORDER BY match_score DESC`,
 			caseId,
 		)].map(matchRow);
