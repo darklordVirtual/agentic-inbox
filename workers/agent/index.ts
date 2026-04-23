@@ -9,7 +9,6 @@ import {
 	convertToModelMessages,
 	stepCountIs,
 } from "ai";
-import { createWorkersAI } from "workers-ai-provider";
 import { z } from "zod";
 import type { EmailFull, EmailMetadata } from "../lib/schemas";
 import { verifyDraft, isPromptInjection, stripModelArtifacts } from "../lib/ai";
@@ -36,6 +35,7 @@ import {
 } from "../lib/tools";
 import { Folders, FOLDER_TOOL_DESCRIPTION, MOVE_FOLDER_TOOL_DESCRIPTION } from "../../shared/folders";
 import type { Env } from "../types";
+import { createLanguageModel, getProviderKey } from "../lib/providers";
 
 // AI SDK v6 changed tool() overloads significantly. We define tools as plain
 // objects matching the Tool type to avoid overload resolution issues.
@@ -129,6 +129,30 @@ async function getSystemPrompt(env: Env, mailboxId: string): Promise<string> {
 		// Fall through to default
 	}
 	return DEFAULT_SYSTEM_PROMPT;
+}
+
+/** Read the configured provider/model for this mailbox, falling back to Cloudflare Workers AI. */
+async function getAgentModel(env: Env, mailboxId: string): Promise<ReturnType<typeof createLanguageModel>> {
+	try {
+		const key = `mailboxes/${mailboxId}.json`;
+		const obj = await env.BUCKET.get(key);
+		if (obj) {
+			const settings = await obj.json<Record<string, unknown>>();
+			const providerId = typeof settings.agentProviderId === "string" ? settings.agentProviderId : null;
+			const modelId = typeof settings.agentModelId === "string" ? settings.agentModelId : null;
+			if (providerId && modelId) {
+				let apiKey: string | null = null;
+				if (providerId !== "cloudflare") {
+					apiKey = await getProviderKey(env, mailboxId, providerId);
+				}
+				return createLanguageModel(providerId, modelId, apiKey, env);
+			}
+		}
+	} catch {
+		// Fall through to default
+	}
+	// Default: Cloudflare Workers AI with Kimi K2.5
+	return createLanguageModel("cloudflare", "@cf/moonshotai/kimi-k2.5", null, env);
 }
 
 function createEmailTools(env: Env, mailboxId: string) {
@@ -360,12 +384,14 @@ export class EmailAgent extends AIChatAgent<any> {
 	async onChatMessage(onFinish: any) {
 		const env = this.env as Env;
 		const mailboxId = this.name;
-		const workersai = createWorkersAI({ binding: env.AI });
 		const tools = createEmailTools(env, mailboxId);
-		const systemPrompt = await getSystemPrompt(env, mailboxId);
+		const [systemPrompt, model] = await Promise.all([
+			getSystemPrompt(env, mailboxId),
+			getAgentModel(env, mailboxId),
+		]);
 
 		const result = streamText({
-			model: workersai("@cf/moonshotai/kimi-k2.5"),
+			model,
 			system: systemPrompt,
 			messages: await convertToModelMessages(this.messages),
 			tools,
@@ -418,9 +444,11 @@ export class EmailAgent extends AIChatAgent<any> {
 		threadId: string;
 	}) {
 		const env = this.env as Env;
-		const workersai = createWorkersAI({ binding: env.AI });
 		const tools = createEmailTools(env, emailData.mailboxId);
-		const systemPrompt = await getSystemPrompt(env, emailData.mailboxId);
+		const [systemPrompt, model] = await Promise.all([
+			getSystemPrompt(env, emailData.mailboxId),
+			getAgentModel(env, emailData.mailboxId),
+		]);
 
 		const stub = getMailboxStub(env, emailData.mailboxId);
 
@@ -611,7 +639,7 @@ Email details:
 
 		try {
 			const result = await generateText({
-				model: workersai("@cf/moonshotai/kimi-k2.5"),
+				model,
 				system: systemPrompt,
 				messages: await convertToModelMessages(messages),
 				tools,

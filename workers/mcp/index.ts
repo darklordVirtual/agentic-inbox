@@ -26,6 +26,11 @@ import {
 } from "../lib/tools";
 import { Folders, FOLDER_TOOL_DESCRIPTION, MOVE_FOLDER_TOOL_DESCRIPTION } from "../../shared/folders";
 import type { Env } from "../types";
+import { getMailboxStub } from "../lib/email-helpers";
+import { casesRepo } from "../../plugins/debt-control/storage/repos/cases.repo";
+import { findingsRepo } from "../../plugins/debt-control/storage/repos/findings.repo";
+import { settingsRepo } from "../../plugins/debt-control/storage/repos/settings.repo";
+import type { CaseStatus } from "../../plugins/debt-control/types";
 
 /** Wrap a plain result object into MCP content format. */
 function mcpText(result: unknown) {
@@ -512,6 +517,78 @@ export class EmailMCP extends McpAgent<Env> {
 				if (denied) return denied;
 				const result = await toolBrainSummary(env, mailboxId);
 				return mcpText(result);
+			},
+		);
+
+		// ── list_debt_cases ────────────────────────────────────────
+		this.server.tool(
+			"list_debt_cases",
+			"List debt collection cases for a mailbox. Returns case summaries including creditor, amount, due date, status, and priority. Requires the Debt Control plugin to be enabled.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				status: z
+					.enum(["open", "disputed", "resolved", "closed", "escalated"])
+					.optional()
+					.describe("Filter by case status — omit to return all cases"),
+			},
+			async ({ mailboxId, status }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				try {
+					const stub = getMailboxStub(env, mailboxId);
+					const sql = await stub.getSql();
+					const cases = casesRepo.listByMailbox(sql, mailboxId, status as CaseStatus | undefined);
+					return mcpText({ cases, total: cases.length });
+				} catch (err) {
+					return mcpError(`Failed to list debt cases: ${err instanceof Error ? err.message : String(err)}`);
+				}
+			},
+		);
+
+		// ── get_debt_case ──────────────────────────────────────────
+		this.server.tool(
+			"get_debt_case",
+			"Get full details for a single debt case, including findings (legal/validity issues detected) and the Debt Control plugin settings for the mailbox.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				caseId: z.string().describe("The debt case ID"),
+			},
+			async ({ mailboxId, caseId }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				try {
+					const stub = getMailboxStub(env, mailboxId);
+					const sql = await stub.getSql();
+					const caseRecord = casesRepo.findById(sql, caseId);
+					if (!caseRecord) {
+						return mcpError(`Debt case "${caseId}" not found`);
+					}
+					const findings = findingsRepo.findByCaseId(sql, caseId);
+					return mcpText({ case: caseRecord, findings });
+				} catch (err) {
+					return mcpError(`Failed to get debt case: ${err instanceof Error ? err.message : String(err)}`);
+				}
+			},
+		);
+
+		// ── get_debt_settings ──────────────────────────────────────
+		this.server.tool(
+			"get_debt_settings",
+			"Get the Debt Control plugin settings for a mailbox — automation toggles, thresholds, and bank provider configuration.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+			},
+			async ({ mailboxId }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				try {
+					const stub = getMailboxStub(env, mailboxId);
+					const sql = await stub.getSql();
+					const settings = settingsRepo.get(sql);
+					return mcpText({ settings });
+				} catch (err) {
+					return mcpError(`Failed to get debt settings: ${err instanceof Error ? err.message : String(err)}`);
+				}
 			},
 		);
 	}

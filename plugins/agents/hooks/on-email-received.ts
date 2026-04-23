@@ -40,8 +40,12 @@ export async function onEmailReceived(
 
 	// ── 3. Router ──────────────────────────────────────────────────
 	const routers = agents.filter((a) => a.role === "router");
+	let routerContext: { intent: string; suggestedAgent: string } | undefined;
 	for (const agent of routers) {
-		await runAgent(agent, payload, ctx.mailboxId, ctx.sql, ctx.env).catch(() => undefined);
+		const result = await runAgent(agent, payload, ctx.mailboxId, ctx.sql, ctx.env).catch(() => undefined);
+		if (result?.outcome === "routed") {
+			routerContext = { intent: result.intent, suggestedAgent: result.suggestedAgent };
+		}
 	}
 
 	// ── 4. Remaining agents ────────────────────────────────────────
@@ -49,7 +53,7 @@ export async function onEmailReceived(
 		(a) => a.role !== "spam_guard" && a.role !== "researcher" && a.role !== "router",
 	);
 	const remainingPromises = remaining.map((agent) =>
-		runAgent(agent, payload, ctx.mailboxId, ctx.sql, ctx.env).catch((_err) => {
+		runAgent(agent, payload, ctx.mailboxId, ctx.sql, ctx.env, routerContext).catch((_err) => {
 			// Non-fatal
 		}),
 	);

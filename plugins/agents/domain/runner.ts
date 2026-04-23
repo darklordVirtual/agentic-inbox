@@ -43,6 +43,7 @@ export async function runAgent(
 	mailboxId: string,
 	sql: SqlStorage,
 	env: Cloudflare.Env,
+	routerContext?: { intent: string; suggestedAgent: string },
 ): Promise<AgentRunResult> {
 	// ── 1. Trigger filter ─────────────────────────────────────────
 	if (!matchesTrigger(agent, payload)) {
@@ -85,7 +86,7 @@ export async function runAgent(
 			case "marketing":
 			case "scheduler":
 			case "custom":
-				return await runResponder(agent, payload, model, sql, env, mailboxId, modelDef);
+				return await runResponder(agent, payload, model, sql, env, mailboxId, modelDef, routerContext);
 		}
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
@@ -376,6 +377,7 @@ async function runResponder(
 	env: Cloudflare.Env,
 	mailboxId: string,
 	modelDef?: ReturnType<typeof getModel>,
+	routerContext?: { intent: string; suggestedAgent: string },
 ): Promise<AgentRunResult> {
 	if (isNoReplyAddress(payload.sender)) {
 		return { outcome: "skipped", reason: "Sender is a no-reply address" };
@@ -395,13 +397,16 @@ async function runResponder(
 		// Non-fatal
 	}
 
+	const routerNote = routerContext
+		? `\nRouter classification: intent="${routerContext.intent}", selected agent="${routerContext.suggestedAgent}". Use this context to tailor your response appropriately.\n`
+		: "";
+
 	const userContent = `Incoming email:
 From: ${payload.sender}
 Subject: ${payload.subject}
 Date: ${payload.date}
 
-${(payload.body ?? "").slice(0, 6000)}${senderContext}
-
+${(payload.body ?? "").slice(0, 6000)}${senderContext}${routerNote}
 Draft a reply to this email. Write only the reply body text (no headers, no "Subject:", no "From:").`;
 
 	const { text, usage } = await generateText({
