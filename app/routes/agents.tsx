@@ -95,13 +95,20 @@ function AgentForm({
 	const [systemPrompt, setSystemPrompt] = useState(initial?.systemPrompt ?? "");
 	const [guardrails, setGuardrails] = useState(initial?.guardrails ?? EMPTY_GUARDRAILS);
 	const [saving, setSaving] = useState(false);
-
+	const [saveError, setSaveError] = useState<string | null>(null);
 	const selectedProvider = (providersData?.providers ?? []).find((p) => p.id === providerId);
 	const models = selectedProvider?.models ?? [];
 	const selectedModel = models.find((m) => m.id === modelId);
+	const missingKey = !!(selectedProvider?.requiresKey && !selectedProvider.hasKey);
 
 	const handleSave = async () => {
 		if (!name.trim() || !role || !providerId || !modelId) return;
+		if (missingKey) {
+			setActiveTab("model");
+			setSaveError(`No API key configured for "${selectedProvider?.name}". Add the key in Plugins & Providers → ${selectedProvider?.name} before creating an agent with this provider.`);
+			return;
+		}
+		setSaveError(null);
 		setSaving(true);
 		try {
 			if (initial) {
@@ -120,8 +127,10 @@ function AgentForm({
 				toastManager.add({ title: "Agent created" });
 			}
 			onClose();
-		} catch {
-			toastManager.add({ title: "Failed to save agent", variant: "error" });
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : "Failed to save agent";
+			setSaveError(msg);
+			toastManager.add({ title: msg, variant: "error" });
 		} finally {
 			setSaving(false);
 		}
@@ -192,8 +201,23 @@ function AgentForm({
 
 			{/* Tab: Model */}
 			{activeTab === "model" && (
-				<div className="space-y-5">
-					<div>
+				<div className="space-y-5">				{/* Missing key — prominent alert */}
+				{missingKey && (
+					<div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+						<p className="font-semibold mb-1">⚠ API key required for {selectedProvider?.name}</p>
+						<p className="text-xs leading-relaxed">
+							This provider requires an API key before you can create agents.
+							Go to <strong>Plugins &amp; Providers</strong> in the sidebar, expand <strong>{selectedProvider?.name}</strong>,
+							and paste your API key. Then come back and try again.
+						</p>
+						<NavLink
+							to={`/mailbox/${mailboxId}/plugin-settings`}
+							className="inline-block mt-2 text-xs underline text-amber-700 hover:text-amber-900"
+						>
+							Open Plugins &amp; Providers →
+						</NavLink>
+					</div>
+				)}					<div>
 						<label className="text-sm font-medium text-kumo-default block mb-1">Provider</label>
 						<Select
 							value={providerId}
@@ -213,9 +237,6 @@ function AgentForm({
 						</Select>
 						{selectedProvider && (
 							<p className="text-xs text-kumo-subtle mt-1">{selectedProvider.description}</p>
-						)}
-						{selectedProvider?.requiresKey && !selectedProvider.hasKey && (
-							<p className="text-xs text-amber-600 mt-1">⚠ No API key saved for this provider. Add it in Plugins &amp; Providers settings.</p>
 						)}
 					</div>
 					<div>
@@ -368,7 +389,13 @@ function AgentForm({
 					</div>
 				</div>
 			)}
-
+		{/* Save error banner */}
+		{saveError && (
+			<div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-start gap-2">
+				<span className="shrink-0 mt-0.5">⚠</span>
+				<span>{saveError}</span>
+			</div>
+		)}
 			{/* Actions */}
 			<div className="flex justify-between items-center pt-5 mt-2 border-t border-kumo-line">
 				<div className="flex gap-1">
@@ -386,7 +413,7 @@ function AgentForm({
 				</div>
 				<div className="flex gap-2">
 					<Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
-					<Button variant="primary" onClick={handleSave} disabled={saving || !name.trim()}>
+				<Button variant="primary" onClick={handleSave} disabled={saving || !name.trim() || missingKey}>
 						{saving && <SpinnerGapIcon size={16} className="animate-spin mr-1" />}
 						{initial ? "Save Changes" : "Create Agent"}
 					</Button>
@@ -473,7 +500,7 @@ function AgentCard({
 			</div>
 
 			<Dialog.Root open={editOpen} onOpenChange={setEditOpen}>
-				<Dialog size="lg">
+			<Dialog size="xl">
 					<Dialog.Title>{`Edit Agent: ${agent.name}`}</Dialog.Title>
 					<AgentForm mailboxId={mailboxId} initial={agent} onClose={() => setEditOpen(false)} />
 				</Dialog>
@@ -563,7 +590,7 @@ export default function AgentsDashboardRoute() {
 
 			{/* Create dialog */}
 			<Dialog.Root open={createOpen} onOpenChange={setCreateOpen}>
-				<Dialog size="lg">
+			<Dialog size="xl">
 					<Dialog.Title>New AI Agent</Dialog.Title>
 					<AgentForm mailboxId={mailboxId!} onClose={() => setCreateOpen(false)} />
 				</Dialog>
