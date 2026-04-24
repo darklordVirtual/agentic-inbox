@@ -113,26 +113,27 @@ CREATE TABLE IF NOT EXISTS dc_payment_matches (
 CREATE INDEX IF NOT EXISTS idx_dc_matches_case ON dc_payment_matches(case_id);
 `,
 	},
+	// NOTE: SQLite does NOT support "ALTER TABLE ... ADD COLUMN IF NOT EXISTS".
+	// Each ADD COLUMN is its own named migration so the runner makes it idempotent.
+	{ name: "debt_control_003_case_external_case_no",     sql: `ALTER TABLE dc_cases ADD COLUMN external_case_no TEXT;` },
+	{ name: "debt_control_003_case_amounts_json",          sql: `ALTER TABLE dc_cases ADD COLUMN amounts_json TEXT;` },
+	{ name: "debt_control_003_case_invoices_json",         sql: `ALTER TABLE dc_cases ADD COLUMN invoices_json TEXT NOT NULL DEFAULT '[]';` },
+	{ name: "debt_control_003_case_parent_case_no",        sql: `ALTER TABLE dc_cases ADD COLUMN parent_case_no TEXT;` },
+	{ name: "debt_control_003_case_merged_case_nos_json",  sql: `ALTER TABLE dc_cases ADD COLUMN merged_case_nos_json TEXT NOT NULL DEFAULT '[]';` },
+	{ name: "debt_control_003_case_first_seen_at",         sql: `ALTER TABLE dc_cases ADD COLUMN first_seen_at TEXT;` },
+	{ name: "debt_control_003_case_last_seen_at",          sql: `ALTER TABLE dc_cases ADD COLUMN last_seen_at TEXT;` },
+	{ name: "debt_control_003_case_objection_date",        sql: `ALTER TABLE dc_cases ADD COLUMN objection_date TEXT;` },
+	{ name: "debt_control_003_case_proc_limitation",       sql: `ALTER TABLE dc_cases ADD COLUMN processing_limitation_requested_at TEXT;` },
+	{ name: "debt_control_003_case_closed_at",             sql: `ALTER TABLE dc_cases ADD COLUMN closed_at TEXT;` },
+	{ name: "debt_control_003_case_settlement_amount",     sql: `ALTER TABLE dc_cases ADD COLUMN settlement_offer_amount REAL;` },
+	{ name: "debt_control_003_case_settlement_deadline",   sql: `ALTER TABLE dc_cases ADD COLUMN settlement_offer_deadline TEXT;` },
 	{
-		name: "debt_control_003_events_and_extended_case",
+		name: "debt_control_003_case_ext_no_index",
+		sql: `CREATE INDEX IF NOT EXISTS idx_dc_cases_ext_no ON dc_cases(external_case_no);`,
+	},
+	{
+		name: "debt_control_003_events_table",
 		sql: `
--- Extend dc_cases with new fields
-ALTER TABLE dc_cases ADD COLUMN IF NOT EXISTS external_case_no     TEXT;
-ALTER TABLE dc_cases ADD COLUMN IF NOT EXISTS amounts_json         TEXT;
-ALTER TABLE dc_cases ADD COLUMN IF NOT EXISTS invoices_json        TEXT NOT NULL DEFAULT '[]';
-ALTER TABLE dc_cases ADD COLUMN IF NOT EXISTS parent_case_no       TEXT;
-ALTER TABLE dc_cases ADD COLUMN IF NOT EXISTS merged_case_nos_json TEXT NOT NULL DEFAULT '[]';
-ALTER TABLE dc_cases ADD COLUMN IF NOT EXISTS first_seen_at        TEXT;
-ALTER TABLE dc_cases ADD COLUMN IF NOT EXISTS last_seen_at         TEXT;
-ALTER TABLE dc_cases ADD COLUMN IF NOT EXISTS objection_date       TEXT;
-ALTER TABLE dc_cases ADD COLUMN IF NOT EXISTS processing_limitation_requested_at TEXT;
-ALTER TABLE dc_cases ADD COLUMN IF NOT EXISTS closed_at            TEXT;
-ALTER TABLE dc_cases ADD COLUMN IF NOT EXISTS settlement_offer_amount    REAL;
-ALTER TABLE dc_cases ADD COLUMN IF NOT EXISTS settlement_offer_deadline  TEXT;
-
-CREATE INDEX IF NOT EXISTS idx_dc_cases_ext_no ON dc_cases(external_case_no);
-
--- Immutable event log for each document processed per case
 CREATE TABLE IF NOT EXISTS dc_events (
 	id                     TEXT PRIMARY KEY,
 	case_id                TEXT NOT NULL REFERENCES dc_cases(id) ON DELETE CASCADE,
@@ -150,7 +151,6 @@ CREATE TABLE IF NOT EXISTS dc_events (
 	extracted_text_preview TEXT,
 	created_at             TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
 CREATE INDEX IF NOT EXISTS idx_dc_events_case   ON dc_events(case_id);
 CREATE INDEX IF NOT EXISTS idx_dc_events_date   ON dc_events(date);
 CREATE INDEX IF NOT EXISTS idx_dc_events_source ON dc_events(source_email_id);
