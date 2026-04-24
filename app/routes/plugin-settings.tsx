@@ -71,7 +71,7 @@ function ProviderKeyForm({
 
 	if (provider.hasKey && !editing) {
 		return (
-			<div className="flex items-center gap-2">
+			<div className="flex flex-wrap items-center gap-2">
 				<Badge variant="success">
 					<CheckIcon size={12} className="mr-1" />
 					Key configured
@@ -93,8 +93,8 @@ function ProviderKeyForm({
 	return (
 		<div className="space-y-2">
 			{(editing || !provider.hasKey) && (
-				<div className="flex items-center gap-2">
-					<div className="relative flex-1">
+				<div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+					<div className="relative min-w-0 flex-1">
 						<Input
 							type={showKey ? "text" : "password"}
 							placeholder="Paste your API key here…"
@@ -110,19 +110,21 @@ function ProviderKeyForm({
 							{showKey ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
 						</button>
 					</div>
-					<Button
-						variant="primary"
-						size="sm"
-						onClick={handleSave}
-						disabled={!key.trim() || saveKey.isPending}
-					>
-						Save
-					</Button>
-					{editing && (
-						<Button variant="ghost" size="sm" onClick={() => { setEditing(false); setKey(""); }}>
-							Cancel
+					<div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+						<Button
+							variant="primary"
+							size="sm"
+							onClick={handleSave}
+							disabled={!key.trim() || saveKey.isPending}
+						>
+							Save
 						</Button>
-					)}
+						{editing && (
+							<Button variant="ghost" size="sm" onClick={() => { setEditing(false); setKey(""); }}>
+								Cancel
+							</Button>
+						)}
+					</div>
 				</div>
 			)}
 		</div>
@@ -149,7 +151,7 @@ export default function PluginSettingsRoute() {
 	};
 
 	return (
-		<div className="max-w-3xl mx-auto py-10 px-6 space-y-10">
+		<div className="mx-auto w-full max-w-5xl py-8 px-4 space-y-10 sm:px-6 lg:px-8">
 			<div>
 				<h1 className="text-2xl font-bold text-kumo-default flex items-center gap-2">
 					<PlugsIcon size={24} />
@@ -168,8 +170,8 @@ export default function PluginSettingsRoute() {
 				) : (
 					<div className="divide-y divide-kumo-line border border-kumo-line rounded-lg overflow-hidden">
 						{(pluginsData?.plugins ?? []).map((plugin) => (
-							<div key={plugin.id} className="flex items-center justify-between px-4 py-4 bg-kumo-surface">
-								<div>
+							<div key={plugin.id} className="flex flex-col gap-3 px-4 py-4 bg-kumo-surface sm:flex-row sm:items-center sm:justify-between">
+								<div className="min-w-0">
 									<div className="font-medium text-kumo-default">{plugin.name}</div>
 									<div className="text-sm text-kumo-subtle mt-0.5">{plugin.description}</div>
 									<Badge variant="secondary" className="mt-1 text-xs">{plugin.version}</Badge>
@@ -269,7 +271,8 @@ function ProviderCard({
 			{/* Expandable model list */}
 			{expanded && (
 				<div className="mt-3 rounded-lg border border-kumo-line overflow-hidden">
-					<table className="w-full text-xs">
+					<div className="overflow-x-auto">
+						<table className="w-full min-w-[640px] text-xs">
 						<thead className="bg-kumo-tint border-b border-kumo-line">
 							<tr>
 								<th className="text-left px-3 py-2 font-medium text-kumo-subtle">Model</th>
@@ -314,7 +317,8 @@ function ProviderCard({
 								</tr>
 							))}
 						</tbody>
-					</table>
+						</table>
+					</div>
 					<div className="px-3 py-2 bg-kumo-tint/50 text-xs text-kumo-subtle border-t border-kumo-line flex items-center gap-1">
 						<CpuIcon size={12} />
 						Select a model when creating or editing an agent in the AI Agents section.
