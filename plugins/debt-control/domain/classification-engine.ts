@@ -99,13 +99,36 @@ const REFERENCE_PATTERN =
 	/(?:kid|ref(?:erance)?|kontonr|krav(?:nr|nummer)?)[:\s#]*([A-Z\d\-\/]{4,30})/i;
 const CREDITOR_FROM_PATTERN = /^(?:fra|from|avsender)[:\s]+(.+)/im;
 
+/**
+ * Parse a Norwegian-formatted amount string.
+ * Handles "1.234,56" (dot=thousands, comma=decimal) and "1234.56" (international).
+ */
+function parseNorwegianAmount(raw: string): number | null {
+	const s = raw.replace(/\s/g, "");
+	// If there's both a dot and a comma, dot is thousands separator, comma is decimal
+	// e.g. "1.234,56" → "1234.56"
+	// If there's only a dot: could be thousands ("1.234") or decimal ("1234.56") —
+	// treat as decimal only if there are exactly 2 digits after the dot.
+	if (s.includes(".") && s.includes(",")) {
+		const normalised = s.replace(/\./g, "").replace(",", ".");
+		const val = Number(normalised);
+		return Number.isFinite(val) ? val : null;
+	}
+	// Only comma: comma is decimal separator ("1234,56" or "1.234,56" already handled above)
+	if (s.includes(",") && !s.includes(".")) {
+		const normalised = s.replace(",", ".");
+		const val = Number(normalised);
+		return Number.isFinite(val) ? val : null;
+	}
+	const val = Number(s);
+	return Number.isFinite(val) ? val : null;
+}
+
 function extractAmount(text: string): number | null {
 	let m = AMOUNT_PATTERN.exec(text);
 	if (!m) m = AMOUNT_PLAIN.exec(text);
 	if (!m) return null;
-	const cleaned = m[1].replace(/\s/g, "").replace(",", ".");
-	const val = parseFloat(cleaned);
-	return Number.isFinite(val) ? val : null;
+	return parseNorwegianAmount(m[1]);
 }
 
 function extractDueDate(text: string): string | null {

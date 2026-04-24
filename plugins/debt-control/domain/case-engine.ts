@@ -40,7 +40,7 @@ export function processEmail(
 	const reference = classification.reference ?? null;
 
 	// 1. Try to find an existing case
-	let existingCase = casesRepo.findByCreditorRef(sql, mailboxId, creditor, reference);
+	let existingCase = casesRepo.findByCreditorRef(sql, mailboxId, creditor, reference, classification.amountDue, classification.dueDate);
 	let isNew = false;
 
 	if (!existingCase) {

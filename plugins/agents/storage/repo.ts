@@ -139,36 +139,57 @@ export function getDailyTokensUsed(sql: SqlStorage, agentId: string): number {
 
 // ── Rate limiting ─────────────────────────────────────────────────
 
+function rateWindowKey(agentId: string): { key: string; windowStart: Date } {
+	const now = new Date();
+	const windowStart = new Date(now);
+	windowStart.setMinutes(0, 0, 0);
+	return { key: `${agentId}:${windowStart.toISOString()}`, windowStart };
+}
+
 /**
+ * Check the hourly rate limit WITHOUT incrementing.
+ * Returns true if the agent is still within quota.
+ */
+export function checkRate(sql: SqlStorage, agentId: string, maxPerHour: number): boolean {
+	const { key } = rateWindowKey(agentId);
+	const existing = [...sql.exec<SqlRow>(
+		"SELECT count FROM ag_rate_buckets WHERE id = ?",
+		key,
+	)];
+	if (existing.length === 0) return true;
+	return Number(existing[0].count ?? 0) < maxPerHour;
+}
+
+/**
+ * Increment the hourly rate bucket after a successful run.
+ */
+export function incrementRate(sql: SqlStorage, agentId: string): void {
+	const { key, windowStart } = rateWindowKey(agentId);
+	const existing = [...sql.exec<SqlRow>(
+		"SELECT count FROM ag_rate_buckets WHERE id = ?",
+		key,
+	)];
+	if (existing.length === 0) {
+		sql.exec(
+			"INSERT INTO ag_rate_buckets (id, agent_id, window_start, count) VALUES (?, ?, ?, 1)",
+			key, agentId, windowStart.toISOString(),
+		);
+		// Clean up old buckets (>48h)
+		const cutoff = new Date(Date.now() - 48 * 3600_000).toISOString();
+		sql.exec("DELETE FROM ag_rate_buckets WHERE window_start < ?", cutoff);
+	} else {
+		sql.exec("UPDATE ag_rate_buckets SET count = count + 1 WHERE id = ?", key);
+	}
+}
+
+/**
+ * @deprecated Use checkRate + incrementRate instead.
  * Check and increment rate bucket for hourly limit.
  * Returns true if allowed, false if rate limit exceeded.
  */
 export function checkAndIncrementRate(sql: SqlStorage, agentId: string, maxPerHour: number): boolean {
-	const now = new Date();
-	const windowStart = new Date(now);
-	windowStart.setMinutes(0, 0, 0);
-	const windowKey = `${agentId}:${windowStart.toISOString()}`;
-
-	const existing = [...sql.exec<SqlRow>(
-		"SELECT count FROM ag_rate_buckets WHERE id = ?",
-		windowKey,
-	)];
-
-	if (existing.length === 0) {
-		sql.exec(
-			"INSERT INTO ag_rate_buckets (id, agent_id, window_start, count) VALUES (?, ?, ?, 1)",
-			windowKey, agentId, windowStart.toISOString(),
-		);
-		// Also clean up old buckets (>48h)
-		const cutoff = new Date(Date.now() - 48 * 3600_000).toISOString();
-		sql.exec("DELETE FROM ag_rate_buckets WHERE window_start < ?", cutoff);
-		return true;
-	}
-
-	const count = Number(existing[0].count ?? 0);
-	if (count >= maxPerHour) return false;
-
-	sql.exec("UPDATE ag_rate_buckets SET count = count + 1 WHERE id = ?", windowKey);
+	if (!checkRate(sql, agentId, maxPerHour)) return false;
+	incrementRate(sql, agentId);
 	return true;
 }
 

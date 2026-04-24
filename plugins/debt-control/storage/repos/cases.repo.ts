@@ -33,6 +33,8 @@ export const casesRepo = {
 		mailboxId: string,
 		creditor: string,
 		reference: string | null,
+		amountDue?: number | null,
+		dueDate?: string | null,
 	): DebtCase | null {
 		if (reference) {
 			const [r] = [...sql.exec<Record<string, SqlStorageValue>>(
@@ -43,13 +45,37 @@ export const casesRepo = {
 			)];
 			if (r) return row(r);
 		}
-		// Fall back to most recent open case from same creditor
-		const [r] = [...sql.exec<Record<string, SqlStorageValue>>(
-			`SELECT * FROM dc_cases WHERE mailbox_id = ? AND creditor = ? AND status = 'open' ORDER BY created_at DESC LIMIT 1`,
+		// Without a reference, score open cases from the same creditor by how closely
+		// amount and due-date match. Require at least one field to match; return null
+		// when none are close enough so a new case is created instead of merging
+		// unrelated claims from the same creditor.
+		const candidates = [...sql.exec<Record<string, SqlStorageValue>>(
+			`SELECT * FROM dc_cases WHERE mailbox_id = ? AND creditor = ? AND status = 'open' ORDER BY created_at DESC LIMIT 10`,
 			mailboxId,
 			creditor,
-		)];
-		return r ? row(r) : null;
+		)].map(row);
+
+		if (candidates.length === 0) return null;
+
+		// Score each candidate
+		let best: DebtCase | null = null;
+		let bestScore = 0;
+
+		for (const c of candidates) {
+			let score = 0;
+			if (amountDue != null && c.amountDue != null) {
+				// Consider amounts equal within 1 NOK rounding
+				if (Math.abs(amountDue - c.amountDue) < 1) score += 3;
+			}
+			if (dueDate && c.dueDate === dueDate) score += 2;
+			if (score > bestScore) {
+				bestScore = score;
+				best = c;
+			}
+		}
+
+		// Only merge if we had a meaningful field match (score ≥ 2)
+		return bestScore >= 2 ? best : null;
 	},
 
 	listByMailbox(

@@ -95,8 +95,8 @@ export function runLegalityChecks(
 	if (hasLegalNotice && !hasCollectionNotice) {
 		results.push(
 			finding(c.id, "MISSING_LEGAL_BASIS", "critical",
-				"Legal action threatened or initiated but no collection notice on file. " +
-				"This may violate required process steps. Dispute immediately."),
+				"Legal action threatened or initiated but no collection notice is stored in this mailbox. " +
+				"Request documentation of prior collection steps before concluding that process rules were breached."),
 		);
 	}
 

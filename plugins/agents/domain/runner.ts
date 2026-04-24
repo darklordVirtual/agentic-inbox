@@ -12,7 +12,7 @@
 import { generateText } from "ai";
 import type { Agent, AgentUsageRecord, SenderReport } from "../types";
 import { ROLE_PROMPTS } from "./roles";
-import { checkGuardrails } from "./guardrails";
+import { checkGuardrails, incrementRate } from "./guardrails";
 import { recordUsage, upsertSenderReport, getSenderReport } from "../storage/repo";
 import { createLanguageModel, getProviderKey, getModel } from "../../../workers/lib/providers";
 import { estimateCost } from "./guardrails";
@@ -71,27 +71,39 @@ export async function runAgent(
 	const modelDef = getModel(agent.providerId, agent.modelId);
 
 	// ── 5. Role dispatch ──────────────────────────────────────────
+	let result: AgentRunResult;
 	try {
 		switch (agent.role) {
 			case "spam_guard":
-				return await runSpamGuard(agent, payload, model, sql, env, mailboxId, modelDef);
+				result = await runSpamGuard(agent, payload, model, sql, env, mailboxId, modelDef);
+				break;
 			case "router":
-				return await runRouter(agent, payload, model, sql, env, mailboxId, modelDef);
+				result = await runRouter(agent, payload, model, sql, env, mailboxId, modelDef);
+				break;
 			case "researcher":
-				return await runResearcher(agent, payload, model, sql, env, mailboxId, modelDef);
+				result = await runResearcher(agent, payload, model, sql, env, mailboxId, modelDef);
+				break;
 			case "summarizer":
-				return await runSummarizer(agent, payload, model, sql, env, mailboxId, modelDef);
+				result = await runSummarizer(agent, payload, model, sql, env, mailboxId, modelDef);
+				break;
 			case "responder":
 			case "support":
 			case "marketing":
 			case "scheduler":
 			case "custom":
-				return await runResponder(agent, payload, model, sql, env, mailboxId, modelDef, routerContext);
+				result = await runResponder(agent, payload, model, sql, env, mailboxId, modelDef, routerContext);
+				break;
 		}
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
 		return { outcome: "error", message: msg };
 	}
+
+	// Increment rate only after a successful (non-error) run
+	if (result!.outcome !== "error") {
+		incrementRate(sql, agent.id);
+	}
+	return result!;
 }
 
 // ── Trigger matching ──────────────────────────────────────────────

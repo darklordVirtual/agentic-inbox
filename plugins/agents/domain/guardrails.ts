@@ -4,7 +4,8 @@
  */
 
 import type { AgentGuardrails } from "../types";
-import { checkAndIncrementRate, getDailyTokensUsed } from "../storage/repo";
+import { checkRate, getDailyTokensUsed } from "../storage/repo";
+export { incrementRate } from "../storage/repo";
 
 export interface GuardrailResult {
 	allowed: boolean;
@@ -26,8 +27,8 @@ export async function checkGuardrails(
 	senderEmail: string,
 	role: string,
 ): Promise<GuardrailResult> {
-	// 1. Hourly rate
-	const allowed = checkAndIncrementRate(sql, agentId, guardrails.maxEmailsPerHour);
+	// 1. Hourly rate (read-only check — caller must call incrementRate after a successful run)
+	const allowed = checkRate(sql, agentId, guardrails.maxEmailsPerHour);
 	if (!allowed) {
 		return {
 			allowed: false,

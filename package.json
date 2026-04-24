@@ -23,7 +23,10 @@
 		"deploy": "npm run build && wrangler deploy",
 		"dev": "react-router dev",
 		"preview": "npm run build && vite preview",
-		"typecheck": "npm run cf-typegen && react-router typegen && tsc -b"
+		"typecheck": "npm run cf-typegen && react-router typegen && tsc -b",
+		"lint": "tsc -b --noEmit",
+		"test": "vitest run",
+		"check": "npm run typecheck && npm run test"
 	},
 	"dependencies": {
 		"@ai-sdk/anthropic": "^3.0.71",

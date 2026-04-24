@@ -11,6 +11,7 @@ import { extractPdfText, buildAttachmentKey } from "../../../workers/lib/pdf";
 import { classifyEmail, classifyEmailWithAI } from "../domain/classification-engine";
 import { processEmail } from "../domain/case-engine";
 import { runLegalityChecks } from "../domain/legality-engine";
+import { documentsRepo } from "../storage/repos/documents.repo";
 import { findingsRepo } from "../storage/repos/findings.repo";
 import { settingsRepo } from "../storage/repos/settings.repo";
 
@@ -80,7 +81,9 @@ export async function onEmailReceived(
 	});
 
 	// ── 5. Run legality checks and persist findings ──────────────────
-	const findings = runLegalityChecks(result.case, [result.document]);
+	// Use ALL docs for the case so historical checks (e.g. payment-already-on-file) work
+	const allDocs = documentsRepo.findByCaseId(ctx.sql, result.case.id);
+	const findings = runLegalityChecks(result.case, allDocs);
 	for (const f of findings) {
 		findingsRepo.upsert(ctx.sql, f);
 	}
