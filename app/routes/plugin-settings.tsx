@@ -91,16 +91,16 @@ function ProviderKeyForm({
 	}
 
 	return (
-		<div className="space-y-2">
+		<div className="space-y-2 w-full max-w-full">
 			{(editing || !provider.hasKey) && (
-				<div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-					<div className="relative min-w-0 flex-1">
+				<div className="flex flex-col gap-2 sm:flex-row sm:items-center w-full max-w-full">
+					<div className="relative min-w-0 flex-1 w-full max-w-full">
 						<Input
 							type={showKey ? "text" : "password"}
 							placeholder="Paste your API key here…"
 							value={key}
 							onChange={(e) => setKey(e.target.value)}
-							className="w-full font-mono text-sm pr-9"
+							className="w-full min-w-0 font-mono text-sm max-w-[calc(100vw_-_60px)] sm:max-w-full pr-9"
 						/>
 						<button
 							type="button"
@@ -229,7 +229,7 @@ function ProviderCard({
 	const [expanded, setExpanded] = useState(false);
 
 	return (
-		<div className="px-4 py-4 bg-kumo-surface space-y-3">
+		<div className="px-4 py-4 bg-kumo-surface space-y-3 max-w-full overflow-hidden">
 			{/* Provider name + badges + description */}
 			<div>
 				<div className="flex items-center gap-2 flex-wrap">

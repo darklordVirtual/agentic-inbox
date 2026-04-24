@@ -23,7 +23,7 @@ import {
 	type AgentInfo,
 	type AgentRole,
 } from "~/queries/agents";
-import { useProviders } from "~/queries/plugins";
+import { useProviders, useSaveProviderKey } from "~/queries/plugins";
 
 // ── Role badge colors ─────────────────────────────────────────────
 
@@ -86,8 +86,10 @@ function AgentForm({
 	const { data: providersData } = useProviders(mailboxId);
 	const createAgent = useCreateAgent(mailboxId);
 	const updateAgent = useUpdateAgent(mailboxId);
+	const saveKey = useSaveProviderKey(mailboxId);
 
 	const [activeTab, setActiveTab] = useState<FormTab>("identity");
+	const [newKey, setNewKey] = useState("");
 	const [name, setName] = useState(initial?.name ?? "");
 	const [role, setRole] = useState<AgentRole>(initial?.role ?? "responder");
 	const [providerId, setProviderId] = useState(initial?.providerId ?? "cloudflare");
@@ -201,23 +203,42 @@ function AgentForm({
 
 			{/* Tab: Model */}
 			{activeTab === "model" && (
-				<div className="space-y-5">				{/* Missing key — prominent alert */}
-				{missingKey && (
-					<div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-						<p className="font-semibold mb-1">⚠ API key required for {selectedProvider?.name}</p>
-						<p className="text-xs leading-relaxed">
-							This provider requires an API key before you can create agents.
-							Go to <strong>Plugins &amp; Providers</strong> in the sidebar, expand <strong>{selectedProvider?.name}</strong>,
-							and paste your API key. Then come back and try again.
-						</p>
-						<NavLink
-							to={`/mailbox/${mailboxId}/plugin-settings`}
-							className="inline-block mt-2 text-xs underline text-amber-700 hover:text-amber-900"
-						>
-							Open Plugins &amp; Providers →
-						</NavLink>
-					</div>
-				)}					<div>
+				<div className="space-y-5">
+					{/* Missing key — inline save */}
+					{missingKey && selectedProvider && (
+						<div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+							<p className="font-semibold mb-1">⚠ API key required for {selectedProvider.name}</p>
+							<p className="text-xs leading-relaxed mb-3">
+								This provider requires an API key before you can create agents. Paste it below to continue.
+							</p>
+							<div className="flex flex-col sm:flex-row gap-2">
+								<Input
+									type="password"
+									placeholder="API key here…"
+									value={newKey}
+									onChange={(e) => setNewKey(e.target.value)}
+									className="flex-1 min-w-0 font-mono text-sm"
+								/>
+								<Button
+									variant="primary"
+									size="sm"
+									disabled={!newKey.trim() || saveKey.isPending}
+									onClick={async () => {
+										try {
+											await saveKey.mutateAsync({ providerId: selectedProvider.id, apiKey: newKey.trim() });
+											toastManager.add({ title: "API key saved" });
+											setNewKey("");
+										} catch {
+											toastManager.add({ title: "Failed to save API key", variant: "error" });
+										}
+									}}
+								>
+									{saveKey.isPending ? "Saving..." : "Save Key"}
+								</Button>
+							</div>
+						</div>
+					)}
+					<div>
 						<label className="text-sm font-medium text-kumo-default block mb-1">Provider</label>
 						<Select
 							value={providerId}

@@ -40,11 +40,10 @@ export async function listMailboxes(
 	const list = await bucket.list({ prefix: "mailboxes/" });
 	return list.objects
 		.filter((obj) => {
-			// Only include actual mailbox config files (e.g. user@example.com.json).
-			// Exclude side-car files like user@example.com_plugins.json,
-			// user@example.com_settings.json, etc.
+			// Include actual mailbox config files (e.g. user@example.com.json or legacy user@example.com).
+			// Exclude side-car files like user@example.com_plugins.json and nested folders.
 			const filename = obj.key.replace("mailboxes/", "");
-			return filename.endsWith(".json") && !filename.includes("_");
+			return !filename.endsWith("_plugins.json") && !filename.includes("/");
 		})
 		.map((obj) => {
 			const id = obj.key.replace("mailboxes/", "").replace(".json", "");
