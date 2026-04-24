@@ -38,10 +38,18 @@ export async function listMailboxes(
 	bucket: R2Bucket,
 ): Promise<{ id: string; email: string }[]> {
 	const list = await bucket.list({ prefix: "mailboxes/" });
-	return list.objects.map((obj) => {
-		const id = obj.key.replace("mailboxes/", "").replace(".json", "");
-		return { id, email: id };
-	});
+	return list.objects
+		.filter((obj) => {
+			// Only include actual mailbox config files (e.g. user@example.com.json).
+			// Exclude side-car files like user@example.com_plugins.json,
+			// user@example.com_settings.json, etc.
+			const filename = obj.key.replace("mailboxes/", "");
+			return filename.endsWith(".json") && !filename.includes("_");
+		})
+		.map((obj) => {
+			const id = obj.key.replace("mailboxes/", "").replace(".json", "");
+			return { id, email: id };
+		});
 }
 
 // ── Sender Validation ──────────────────────────────────────────────
