@@ -23,19 +23,15 @@ useUploadCsvStatement,
 } from "../queries";
 
 // ── SpareBank 1 logo ─────────────────────────────────────────────
-// SVG inline to avoid any image-hosting dependency.
-function SB1Logo({ size = 28 }: { size?: number }) {
-return (
-<svg width={size * 2.8} height={size} viewBox="0 0 112 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="SpareBank 1">
-{/* Red square badge */}
-<rect width="40" height="40" rx="6" fill="#E3001B" />
-{/* "1" numeral */}
-<text x="20" y="30" textAnchor="middle" fontSize="24" fontWeight="700" fill="white" fontFamily="system-ui,sans-serif">1</text>
-{/* Wordmark */}
-<text x="48" y="14" fontSize="9" fontWeight="700" fill="#1a1a1a" fontFamily="system-ui,sans-serif">SpareBank</text>
-<text x="48" y="28" fontSize="11" fontWeight="400" fill="#555" fontFamily="system-ui,sans-serif">integrasjon</text>
-</svg>
-);
+function SB1Logo({ height = 28 }: { height?: number }) {
+	return (
+		<img
+			src="https://www.sparebank1.no/content/dam/SB1/ikoner/GUI-ikoner/logo-sparebank1.svg"
+			alt="SpareBank 1"
+			height={height}
+			style={{ height, width: "auto" }}
+		/>
+	);
 }
 
 // ── Provider option card ─────────────────────────────────────────
@@ -136,7 +132,7 @@ return (
 <div className="space-y-5">
 {/* Brand header */}
 <div className="flex items-center justify-between">
-<SB1Logo size={26} />
+<SB1Logo height={26} />
 {status?.status && (
 <Badge
 variant={status.status === "ok" ? "success" : status.status === "failed" ? "destructive" : "secondary"}
