@@ -10,6 +10,11 @@
     "plugins/**/*",
     "worker-configuration.d.ts"
   ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts"
+  ],
   "compilerOptions": {
     "composite": true,
     "strict": true,

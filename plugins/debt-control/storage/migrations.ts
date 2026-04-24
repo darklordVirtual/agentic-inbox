@@ -167,4 +167,23 @@ CREATE INDEX IF NOT EXISTS idx_dc_events_date   ON dc_events(date);
 CREATE INDEX IF NOT EXISTS idx_dc_events_source ON dc_events(source_email_id);
 `,
 	},
+	{
+		name: "debt_control_004_collector_profiles",
+		sql: `
+CREATE TABLE IF NOT EXISTS dc_collector_profiles (
+	id                    TEXT PRIMARY KEY,
+	mailbox_id            TEXT NOT NULL,
+	name                  TEXT NOT NULL,
+	org_no                TEXT,
+	portal_domains_json   TEXT NOT NULL DEFAULT '[]',
+	payment_accounts_json TEXT NOT NULL DEFAULT '[]',
+	known_emails_json     TEXT NOT NULL DEFAULT '[]',
+	fingerprints_json     TEXT NOT NULL DEFAULT '[]',
+	strategy_notes_json   TEXT NOT NULL DEFAULT '[]',
+	updated_at            TEXT NOT NULL DEFAULT (datetime('now')),
+	created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS dc_collector_profiles_name ON dc_collector_profiles(mailbox_id, name);
+		`,
+	},
 ];

@@ -247,5 +247,87 @@ export function runFindingRules(
 			"Be om dokumentasjon på forutgående varslingstrinn før du konkluderer med prosessbrudd."));
 	}
 
+	// ── Phase 2 rules ─────────────────────────────────────────────────
+
+	// STANDARD_DEADLINE_PATTERN
+	const deadlines = events
+		.filter((e) => e.deadline && e.date)
+		.map((e) => Math.round((new Date(e.deadline!).getTime() - new Date(e.date).getTime()) / 86_400_000))
+		.filter((d) => d > 0 && d < 90);
+	if (deadlines.length >= 2) {
+		const avg14 = deadlines.filter((d) => Math.abs(d - 14) <= 2).length;
+		if (avg14 / deadlines.length >= 0.5) {
+			results.push(finding(c.id, "STANDARD_DEADLINE_PATTERN", "info",
+				"Observert regelmønster: standardfrist på 14 dager er konsistent i dokumentene for denne saken. " +
+				"Predikert at neste krav vil ha tilsvarende frist."));
+		}
+	}
+
+	// PREDICTABLE_FEE_ESCALATION
+	const feeAmounts = events
+		.map((e) => e.amounts?.legalCosts ?? e.amounts?.fee ?? null)
+		.filter((f): f is number => f !== null && f > 0)
+		.sort((a, b) => a - b);
+	if (feeAmounts.length >= 2) {
+		const firstFee = feeAmounts[0];
+		const lastFee  = feeAmounts[feeAmounts.length - 1];
+		if (lastFee >= firstFee * 1.8) {
+			results.push(finding(c.id, "PREDICTABLE_FEE_ESCALATION", "warning",
+				`Observert regelmønster: salær har økt fra ${firstFee} kr til ${lastFee} kr. ` +
+				"Indikert eskaleringslogikk — ytterligere salærøkning kan forekomme basert på historiske dokumenter i denne saken."));
+		}
+	}
+
+	// CONSOLIDATION_AFTER_FEES — multiple merged case nos + earlier fees
+	if ((c.mergedCaseNos?.length ?? 0) > 0 && feeAmounts.length > 0) {
+		results.push(finding(c.id, "CONSOLIDATION_AFTER_FEES", "warning",
+			`Saken ble sammenslått (${c.mergedCaseNos?.length ?? 0} underliggende saker) etter at salær ble påheftet. ` +
+			"Observert mønster: sammenstillingsstrategi kan øke totalt salær."));
+	}
+
+	// MANUAL_OVERRIDE_AFTER_OBJECTION — objection → lower fees or closed
+	if (c.objectionDate) {
+		const afterObjection = events.filter((e) => e.date > c.objectionDate!);
+		const hadReduction   = afterObjection.some((e) =>
+			["innsigelse_besvart", "redusert_oppgjoer", "betalingsbekreftelse", "avslutningsbrev"].includes(e.kind),
+		);
+		if (hadReduction) {
+			results.push(finding(c.id, "MANUAL_OVERRIDE_AFTER_OBJECTION", "opportunity",
+				"Observert regelmønster: innsigelse ble etterfulgt av manuell behandling, redusert oppgjør eller saksavslutning. " +
+				"Tilsvarende utfall kan være mulig i denne saken."));
+		}
+	}
+
+	// PRINCIPAL_ONLY_ACCEPTED_PATTERN
+	if (c.status === "principal_paid_fees_remain" || c.status === "principal_only_settlement") {
+		results.push(finding(c.id, "PRINCIPAL_ONLY_ACCEPTED_PATTERN", "opportunity",
+			"Observert regelmønster: sakshistorikken indikerer at kun-hovedstol-oppgjør er eller har vært aktuelt. " +
+			"Tilbud om betaling av kun dokumentert hovedstol kan vurderes."));
+	}
+
+	// SETTLEMENT_DISCOUNT_PATTERN
+	if (c.settlementOfferAmount && (c.amounts?.principal ?? 0) > 0) {
+		const discount = 1 - c.settlementOfferAmount / (c.amounts?.principal ?? c.settlementOfferAmount);
+		if (discount >= 0.1) {
+			results.push(finding(c.id, "SETTLEMENT_DISCOUNT_PATTERN", "opportunity",
+				`Observert regelmønster: tilbud om redusert oppgjør på ${(discount * 100).toFixed(0)} % frafall. ` +
+				"Tilsvarende forhandling kan være mulig."));
+		}
+	}
+
+	// CONTINUED_AUTOMATION_AFTER_DISPUTE
+	if (c.objectionDate) {
+		const automatedAfter = events.filter(
+			(e) =>
+				e.date > c.objectionDate! &&
+				["betalingsoppfordring", "betalingspaaminnelse", "restbeloep", "collection_demand"].includes(e.kind),
+		);
+		if (automatedAfter.length > 0) {
+			results.push(finding(c.id, "CONTINUED_AUTOMATION_AFTER_DISPUTE", "warning",
+				"Observert regelmønster: inkassoaktivitet ser ut til å ha fortsatt etter at innsigelse ble registrert. " +
+				"Be om skriftlig bekreftelse på at innsigelsen er registrert og at videre inndrivelse er stanset."));
+		}
+	}
+
 	return results;
 }

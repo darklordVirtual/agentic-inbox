@@ -24,8 +24,17 @@ type RateLimitStub = { checkSendRateLimit: () => Promise<string | null> };
 export async function handleReplyEmail(c: AppContext) {
 	const mailboxId = c.req.param("mailboxId") ?? "";
 	const id = c.req.param("id") ?? "";
-	const body = SendEmailRequestSchema.parse(await c.req.json());
+
+	let body: ReturnType<typeof SendEmailRequestSchema.parse>;
+	try {
+		body = SendEmailRequestSchema.parse(await c.req.json());
+	} catch (e) {
+		console.error(`[reply] Schema validation failed (emailId=${id}, mailbox=${mailboxId}):`, (e as Error).message);
+		return c.json({ error: "Invalid request body", details: (e as Error).message }, 400);
+	}
 	const { to, cc, bcc, from, subject, html, text, attachments } = body;
+
+	console.log(`[reply] from=${JSON.stringify(from)} to=${JSON.stringify(to)} inReplyTo=${id} mailbox=${mailboxId}`);
 
 	const stub = c.var.mailboxStub;
 	const rawOriginal = (await stub.getEmail(id)) as EmailFull | null;
@@ -41,14 +50,16 @@ export async function handleReplyEmail(c: AppContext) {
 	try {
 		({ toStr, fromEmail, fromDomain } = validateSender(to, from, mailboxId));
 	} catch (e) {
-		if (e instanceof SenderValidationError) return c.json({ error: e.message }, 400);
+		if (e instanceof SenderValidationError) {
+			console.warn(`[reply] Sender validation failed: ${(e as Error).message} (mailbox=${mailboxId})`);
+			return c.json({ error: e.message }, 400);
+		}
 		throw e;
 	}
 
 	const { messageId, outgoingMessageId } = generateMessageId(fromDomain);
 
-	const rateLimitError = await (stub as unknown as RateLimitStub)
-		.checkSendRateLimit();
+	const rateLimitError = await (stub as unknown as RateLimitStub).checkSendRateLimit();
 	if (rateLimitError) {
 		return c.json({ error: rateLimitError }, 429);
 	}
@@ -87,6 +98,8 @@ export async function handleReplyEmail(c: AppContext) {
 
 	await stub.markThreadRead(thread_id);
 
+	console.log(`[reply] Email persisted, enqueueing delivery via EMAIL binding (messageId=${messageId}, to=${toStr})`);
+
 	c.executionCtx.waitUntil(
 		sendEmail(c.env.EMAIL, {
 			to,
@@ -104,8 +117,10 @@ export async function handleReplyEmail(c: AppContext) {
 				contentId: att.contentId,
 			})),
 			headers: buildThreadingHeaders(originalMsgId, references),
+		}).then(() => {
+			console.log(`[reply] EMAIL binding delivery succeeded (messageId=${messageId})`);
 		}).catch((e) => {
-			console.error("Deferred reply delivery failed:", (e as Error).message);
+			console.error(`[reply] EMAIL binding delivery failed (messageId=${messageId}, to=${toStr}):`, (e as Error).message, { code: (e as any).code });
 		}),
 	);
 
@@ -115,8 +130,17 @@ export async function handleReplyEmail(c: AppContext) {
 export async function handleForwardEmail(c: AppContext) {
 	const mailboxId = c.req.param("mailboxId") ?? "";
 	const id = c.req.param("id") ?? "";
-	const body = SendEmailRequestSchema.parse(await c.req.json());
+
+	let body: ReturnType<typeof SendEmailRequestSchema.parse>;
+	try {
+		body = SendEmailRequestSchema.parse(await c.req.json());
+	} catch (e) {
+		console.error(`[forward] Schema validation failed (emailId=${id}, mailbox=${mailboxId}):`, (e as Error).message);
+		return c.json({ error: "Invalid request body", details: (e as Error).message }, 400);
+	}
 	const { to, cc, bcc, from, subject, html, text, attachments } = body;
+
+	console.log(`[forward] from=${JSON.stringify(from)} to=${JSON.stringify(to)} originalId=${id} mailbox=${mailboxId}`);
 
 	const stub = c.var.mailboxStub;
 	const rawOriginal = (await stub.getEmail(id)) as EmailFull | null;
@@ -131,14 +155,16 @@ export async function handleForwardEmail(c: AppContext) {
 	try {
 		({ toStr, fromEmail, fromDomain } = validateSender(to, from, mailboxId));
 	} catch (e) {
-		if (e instanceof SenderValidationError) return c.json({ error: e.message }, 400);
+		if (e instanceof SenderValidationError) {
+			console.warn(`[forward] Sender validation failed: ${(e as Error).message} (mailbox=${mailboxId})`);
+			return c.json({ error: e.message }, 400);
+		}
 		throw e;
 	}
 
 	const { messageId, outgoingMessageId } = generateMessageId(fromDomain);
 
-	const rateLimitError = await (stub as unknown as RateLimitStub)
-		.checkSendRateLimit();
+	const rateLimitError = await (stub as unknown as RateLimitStub).checkSendRateLimit();
 	if (rateLimitError) {
 		return c.json({ error: rateLimitError }, 429);
 	}
@@ -173,6 +199,8 @@ export async function handleForwardEmail(c: AppContext) {
 		attachmentData,
 	);
 
+	console.log(`[forward] Email persisted, enqueueing delivery via EMAIL binding (messageId=${messageId}, to=${toStr})`);
+
 	c.executionCtx.waitUntil(
 		sendEmail(c.env.EMAIL, {
 			to,
@@ -189,8 +217,10 @@ export async function handleForwardEmail(c: AppContext) {
 				disposition: att.disposition,
 				contentId: att.contentId,
 			})),
+		}).then(() => {
+			console.log(`[forward] EMAIL binding delivery succeeded (messageId=${messageId})`);
 		}).catch((e) => {
-			console.error("Deferred forward delivery failed:", (e as Error).message);
+			console.error(`[forward] EMAIL binding delivery failed (messageId=${messageId}, to=${toStr}):`, (e as Error).message, { code: (e as any).code });
 		}),
 	);
 

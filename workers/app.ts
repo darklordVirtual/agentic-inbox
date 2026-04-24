@@ -92,6 +92,24 @@ app.all("/mcp/*", async (c) => {
 	return mcpHandler.fetch(c.req.raw, c.env, c.executionCtx as ExecutionContext);
 });
 
+// Global error-logging middleware — logs all unhandled 500s with method, path and error details
+app.use("*", async (c, next) => {
+	try {
+		await next();
+	} catch (err) {
+		const error = err as Error;
+		console.error(
+			`[ERROR] ${c.req.method} ${c.req.path}`,
+			{
+				name: error.name,
+				message: error.message,
+				stack: error.stack,
+			},
+		);
+		throw err;
+	}
+});
+
 // Mount the API routes
 app.route("/", apiApp);
 

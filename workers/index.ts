@@ -173,14 +173,26 @@ app.get("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 
 app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	const mailboxId = c.req.param("mailboxId")!;
-	const body = SendEmailRequestSchema.parse(await c.req.json());
+
+	let body: ReturnType<typeof SendEmailRequestSchema.parse>;
+	try {
+		body = SendEmailRequestSchema.parse(await c.req.json());
+	} catch (e) {
+		console.error(`[send] Schema validation failed for mailbox=${mailboxId}:`, (e as Error).message);
+		return c.json({ error: "Invalid request body", details: (e as Error).message }, 400);
+	}
 	const { to, cc, bcc, from, subject, html, text, attachments, in_reply_to, references, thread_id } = body;
+
+	console.log(`[send] compose from=${JSON.stringify(from)} to=${JSON.stringify(to)} mailbox=${mailboxId}`);
 
 	let toStr: string, fromEmail: string, fromDomain: string;
 	try {
 		({ toStr, fromEmail, fromDomain } = validateSender(to, from, mailboxId));
 	} catch (e) {
-		if (e instanceof SenderValidationError) return c.json({ error: e.message }, 400);
+		if (e instanceof SenderValidationError) {
+			console.warn(`[send] Sender validation failed: ${(e as Error).message} (mailbox=${mailboxId}, from=${JSON.stringify(from)})`);
+			return c.json({ error: e.message }, 400);
+		}
 		throw e;
 	}
 
@@ -188,9 +200,17 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	const stub = c.var.mailboxStub;
 	const rateLimitError = await (stub as any).checkSendRateLimit();
 	if (rateLimitError) return c.json({ error: rateLimitError }, 429);
-	const attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
 
-	await stub.createEmail(Folders.SENT, {
+	let attachmentData: StoredAttachment[];
+	try {
+		attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
+	} catch (e) {
+		console.error(`[send] Failed to store attachments for messageId=${messageId}:`, (e as Error).message);
+		throw e;
+	}
+
+	try {
+		await stub.createEmail(Folders.SENT, {
 		id: messageId, subject, sender: fromEmail, recipient: toStr,
 		cc: cc ? (Array.isArray(cc) ? cc.join(", ") : cc).toLowerCase() : null,
 		bcc: bcc ? (Array.isArray(bcc) ? bcc.join(", ") : bcc).toLowerCase() : null,
@@ -206,13 +226,23 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 			{ key: "message-id", value: `<${outgoingMessageId}>` },
 		]),
 	}, attachmentData);
+	} catch (e) {
+		console.error(`[send] Failed to persist email to SENT folder (messageId=${messageId}, mailbox=${mailboxId}):`, (e as Error).message, (e as Error).stack);
+		throw e;
+	}
+
+	console.log(`[send] Email persisted, enqueueing delivery via EMAIL binding (messageId=${messageId}, to=${toStr})`);
 
 	c.executionCtx.waitUntil(
 		sendEmail(c.env.EMAIL, {
 			to, cc, bcc, from, subject, html, text,
 			attachments: attachments?.map((att) => ({ content: att.content, filename: att.filename, type: att.type, disposition: att.disposition || "attachment", contentId: att.contentId })),
 			...(in_reply_to ? { headers: buildThreadingHeaders(in_reply_to, references || []) } : {}),
-		}).catch((e) => console.error("Deferred email delivery failed:", (e as Error).message)),
+		}).then(() => {
+			console.log(`[send] EMAIL binding delivery succeeded (messageId=${messageId})`);
+		}).catch((e) => {
+			console.error(`[send] EMAIL binding delivery failed (messageId=${messageId}, to=${toStr}):`, (e as Error).message, { code: (e as any).code });
+		}),
 	);
 	return c.json({ id: messageId, status: "sent" }, 202);
 });

@@ -160,7 +160,18 @@ export interface Finding {
 }
 
 export type FindingCode =
-	// New comprehensive codes
+	// Phase 2 — algorithmic risk findings
+	| "STANDARD_DEADLINE_PATTERN"
+	| "PREDICTABLE_FEE_ESCALATION"
+	| "SMALL_CLAIMS_SEPARATE_ESCALATION"
+	| "CONSOLIDATION_AFTER_FEES"
+	| "MANUAL_OVERRIDE_AFTER_OBJECTION"
+	| "PRINCIPAL_ONLY_ACCEPTED_PATTERN"
+	| "SETTLEMENT_DISCOUNT_PATTERN"
+	| "CONTINUED_AUTOMATION_AFTER_DISPUTE"
+	| "NEXT_FEE_INCREASE_PREDICTED"
+	| "NEXT_COLLECTION_STEP_PREDICTED"
+	// Phase 1 — comprehensive codes
 	| "HIGH_FEE_RATIO"
 	| "PRINCIPAL_PAID_FEES_REMAIN"
 	| "FEE_INCREASE_IMMINENT"
@@ -233,7 +244,11 @@ export type LetterKind =
 	| "objection_on_fees"
 	| "principal_as_settlement"
 	| "payment_status_request"
-	| "processing_limitation_request";
+	| "processing_limitation_request"
+	// Phase 2 letter kinds
+	| "prevent_fee_increase"
+	| "objection_after_continued_collection"
+	| "principal_only_settlement_process_economy";
 
 export interface LetterDraft {
 	kind: LetterKind;
@@ -256,6 +271,90 @@ export interface DebtEvidencePack {
 	recommendedAction: RecommendedAction | null;
 	letterDrafts: LetterDraft[];
 	sourceDocumentRefs: Array<{ emailId: string; attachmentId: string | null; kind: DocumentKind; date: string }>;
+}
+
+// ── Phase 2: Collection Algorithm Fingerprint ───────────────────────
+
+export interface ObservedStage {
+	kind: DocumentKind;
+	averageDaysAfterPrevious: number | null;
+	typicalDeadlineDays: number | null;
+	count: number;
+}
+
+export interface FingerprintEvidence {
+	caseId: string;
+	eventId: string;
+	date: string;
+	observation: string;
+}
+
+export interface CollectionAlgorithmFingerprint {
+	collectorName: string;
+	creditorName: string | undefined;
+	observedStages: ObservedStage[];
+	standardDeadlineDays: number | undefined;
+	feeIncreaseAfterDays: number | undefined;
+	knownFeeSteps: number[];
+	knownInterestRates: number[];
+	consolidationDetected: boolean;
+	settlementOffersDetected: boolean;
+	manualReviewTriggeredByObjection: boolean;
+	paymentClosesCasePattern: boolean;
+	principalOnlySettlementObserved: boolean;
+	confidence: number;     // 0–1
+	evidence: FingerprintEvidence[];
+}
+
+export interface CollectorProfile {
+	name: string;
+	orgNo: string | undefined;
+	portalDomains: string[];
+	paymentAccountNumbers: string[];
+	knownEmailAddresses: string[];
+	observedFingerprints: CollectionAlgorithmFingerprint[];
+	strategyNotes: string[];
+}
+
+// ── Phase 2: Next Collection Step Prediction ─────────────────────────
+
+export interface NextCollectionStepPrediction {
+	predictedNextStatus: CaseStatus;
+	predictedNextDocumentKind: DocumentKind | undefined;
+	estimatedDate: string | undefined;
+	riskLevel: "low" | "medium" | "high" | "critical";
+	costRiskAmount: number | undefined;
+	reasoning: string[];
+	recommendedPreventiveAction: RecommendedAction | undefined;
+}
+
+// ── Phase 2: Tactical Response ───────────────────────────────────────
+
+export type TacticalObjective =
+	| "avoid_fee_increase"
+	| "settle_principal_only"
+	| "request_documentation"
+	| "stop_continued_collection"
+	| "verify_closure"
+	| "prepare_complaint"
+	| "human_review";
+
+export interface TacticalResponse {
+	objective: TacticalObjective;
+	urgency: "low" | "medium" | "high" | "critical";
+	summary: string;
+	recommendedAction: RecommendedAction;
+	draftTemplateId: LetterKind | undefined;
+	checklist: string[];
+}
+
+// ── Phase 2: Timeline Insights ───────────────────────────────────────
+
+export interface TimelineInsight {
+	date: string;
+	label: string;
+	importance: "info" | "warning" | "critical" | "positive";
+	description: string;
 }
 
 // ── Bank reconciliation ──────────────────────────────────────────────

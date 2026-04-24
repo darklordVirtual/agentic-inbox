@@ -142,6 +142,79 @@ ${name}`;
 	};
 }
 
+// ── E. Unngå salærøkning (Phase 2) ────────────────────────────────
+
+export function generatePreventFeeIncreaseLetter(debtCase: DebtCase, recipientName?: string): LetterDraft {
+	const { caseNo, creditor } = ctx(debtCase);
+	const name = recipientName ?? "[NAVN]";
+	const body = `Hei,
+
+Jeg viser til sak ${caseNo}${creditor !== "[KREDITOR]" ? ` hos ${creditor}` : ""}.
+
+For å unngå unødvendig kostnadsøkning ber jeg om en oppdatert kravspesifikasjon og bekreftelse på hva som må betales for å avslutte saken.
+
+Dersom kravet ikke er korrekt, eller dersom salær/renter bestrides, ber jeg om at videre kostnadsakkumulering stilles i bero mens forholdet avklares.
+
+Mvh
+${name}`;
+
+	return {
+		kind: "prevent_fee_increase",
+		subject: `Forespørsel om kravspesifikasjon og stans – sak ${caseNo}`,
+		body,
+	};
+}
+
+// ── F. Innsigelse etter fortsatt inkasso (Phase 2) ─────────────────
+
+export function generateObjectionAfterContinuedCollectionLetter(debtCase: DebtCase, recipientName?: string): LetterDraft {
+	const { caseNo, creditor } = ctx(debtCase);
+	const name = recipientName ?? "[NAVN]";
+	const objectionDate = debtCase.objectionDate ?? "[DATO FOR FØRSTE INNSIGELSE]";
+	const body = `Hei,
+
+Jeg viser til tidligere innsigelse i sak ${caseNo}${creditor !== "[KREDITOR]" ? ` hos ${creditor}` : ""}, registrert ${objectionDate}.
+
+Jeg registrerer at det fortsatt er sendt krav/påminnelser eller beregnet ytterligere beløp etter at saken ble bestridt. Jeg ber derfor om skriftlig redegjørelse for:
+1. hvilken status saken har
+2. om innsigelsen er registrert
+3. om videre inndrivelse er stanset
+4. hvordan eventuelle nye renter/salærer er beregnet
+5. hvilket beløp som eventuelt gjelder dokumentert hovedstol
+
+Mvh
+${name}`;
+
+	return {
+		kind: "objection_after_continued_collection",
+		subject: `Innsigelse – fortsatt inkasso etter bestridelse – sak ${caseNo}`,
+		body,
+	};
+}
+
+// ── G. Kun-hovedstol prosessøkonomi tilbud (Phase 2) ───────────────
+
+export function generatePrincipalOnlyProcessEconomyLetter(debtCase: DebtCase, recipientName?: string): LetterDraft {
+	const { caseNo, creditor, principal } = ctx(debtCase);
+	const name = recipientName ?? "[NAVN]";
+	const body = `Hei,
+
+Jeg viser til sak ${caseNo}${creditor !== "[KREDITOR]" ? ` hos ${creditor}` : ""}.
+
+For å løse saken effektivt og uten ytterligere ressursbruk tilbyr jeg betaling av dokumentert hovedstol ${principal} som fullt og endelig oppgjør.
+
+Tilbudet gis uten erkjennelse av ansvar for salær, renter eller øvrige omkostninger. Jeg ber om skriftlig bekreftelse før betaling på at saken avsluttes ved dette oppgjøret.
+
+Mvh
+${name}`;
+
+	return {
+		kind: "principal_only_settlement_process_economy",
+		subject: `Tilbud om oppgjør – kun hovedstol – sak ${caseNo}`,
+		body,
+	};
+}
+
 // ── Main dispatch ─────────────────────────────────────────────────
 
 export function generateLetter(kind: LetterKind, debtCase: DebtCase, recipientName?: string): LetterDraft {
@@ -154,6 +227,12 @@ export function generateLetter(kind: LetterKind, debtCase: DebtCase, recipientNa
 			return generatePaymentStatusRequestLetter(debtCase, recipientName);
 		case "processing_limitation_request":
 			return generateProcessingLimitationLetter(debtCase, recipientName);
+		case "prevent_fee_increase":
+			return generatePreventFeeIncreaseLetter(debtCase, recipientName);
+		case "objection_after_continued_collection":
+			return generateObjectionAfterContinuedCollectionLetter(debtCase, recipientName);
+		case "principal_only_settlement_process_economy":
+			return generatePrincipalOnlyProcessEconomyLetter(debtCase, recipientName);
 	}
 }
 
@@ -163,6 +242,9 @@ export function generateAllLetters(debtCase: DebtCase, recipientName?: string): 
 		"principal_as_settlement",
 		"payment_status_request",
 		"processing_limitation_request",
+		"prevent_fee_increase",
+		"objection_after_continued_collection",
+		"principal_only_settlement_process_economy",
 	];
 	return kinds.map((k) => generateLetter(k, debtCase, recipientName));
 }

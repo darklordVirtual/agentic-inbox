@@ -8,6 +8,8 @@ import { draftHandlers } from "./handlers/draft";
 import { timelineHandlers } from "./handlers/timeline";
 import { actionsHandlers } from "./handlers/actions";
 import { lettersHandlers } from "./handlers/letters";
+import { collectorHandlers } from "./handlers/collectors";
+import { intelligenceHandlers } from "./handlers/intelligence";
 
 /**
  * Mounts all Debt Control API routes.
@@ -34,6 +36,11 @@ export function registerDebtControlRoutes(app: Hono<MailboxContext>): void {
 	app.get("/cases/:id/recommended-action",    actionsHandlers.getRecommendedAction);
 	app.get("/cases/:id/evidence-pack",         actionsHandlers.getEvidencePack);
 
+	// Phase 2 Intelligence
+	app.get("/cases/:id/prediction",            intelligenceHandlers.prediction);
+	app.get("/cases/:id/tactical-response",     intelligenceHandlers.tacticalResponse);
+	app.get("/cases/:id/timeline-insights",     intelligenceHandlers.timelineInsights);
+
 	// Case status mutations
 	app.post("/cases/:id/mark-objection",                       actionsHandlers.markObjection);
 	app.post("/cases/:id/mark-processing-limitation-requested", actionsHandlers.markProcessingLimitationRequested);
@@ -44,6 +51,10 @@ export function registerDebtControlRoutes(app: Hono<MailboxContext>): void {
 	// Letter generation
 	app.post("/cases/:id/generate-letter",  lettersHandlers.generate);
 
+	// Collector profiles (Phase 2)
+	app.get("/collectors",              collectorHandlers.list);
+	app.get("/collectors/:name/fingerprint", collectorHandlers.fingerprint);
+
 	// Reconcile
 	app.post("/cases/:id/reconcile",  reconcileHandlers.reconcileCase);
 
@@ -51,4 +62,3 @@ export function registerDebtControlRoutes(app: Hono<MailboxContext>): void {
 	app.post("/cases/:id/draft-objection",     draftHandlers.draftObjection);
 	app.post("/cases/:id/request-more-info",   draftHandlers.requestMoreInfo);
 }
-
