@@ -6,7 +6,6 @@
 
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { z } from "zod";
 import type { MailboxContext } from "../../../workers/lib/mailbox";
 import {
 	listAgents,
@@ -21,29 +20,6 @@ import {
 import type { Agent, CreateAgentRequest, UpdateAgentRequest, TriggerPolicy } from "../types";
 import { DEFAULT_GUARDRAILS } from "../types";
 import { ROLE_DESCRIPTIONS, ROLE_DEFAULT_TRIGGERS } from "../domain/roles";
-
-const VALID_ROLES = [
-	"router", "responder", "researcher", "summarizer",
-	"spam_guard", "marketing", "support", "scheduler", "custom",
-] as const;
-
-const CreateAgentSchema = z.object({
-	name: z.string().min(1).max(80),
-	role: z.enum(VALID_ROLES),
-	providerId: z.string().min(1),
-	modelId: z.string().min(1),
-	enabled: z.boolean().optional(),
-	systemPrompt: z.string().max(8000).nullable().optional(),
-	trigger: z.object({
-		events: z.array(z.enum(["email_received", "email_opened", "scheduled", "manual"])),
-		senderFilter: z.array(z.string()).optional(),
-		subjectKeywords: z.array(z.string()).optional(),
-	}).optional(),
-	guardrails: z.object({
-		maxEmailsPerHour: z.number().int().min(1).max(1000).optional(),
-		dailyTokenBudget: z.number().int().min(1).optional(),
-	}).optional(),
-});
 
 async function getSql(c: Context<MailboxContext>): Promise<SqlStorage> {
 	const stub = c.var.mailboxStub;
@@ -105,12 +81,10 @@ export function registerAgentsRoutes(app: Hono<MailboxContext>): void {
 
 	// POST /api/plugins/agents/ — create agent
 	app.post("/", async (c) => {
-		const raw = await c.req.json();
-		const parsed = CreateAgentSchema.safeParse(raw);
-		if (!parsed.success) {
-			return c.json({ error: "Invalid request", details: parsed.error.flatten() }, 400);
+		const body = await c.req.json<CreateAgentRequest>();
+		if (!body.name || !body.role || !body.providerId || !body.modelId) {
+			return c.json({ error: "Missing required fields: name, role, providerId, modelId" }, 400);
 		}
-		const body = parsed.data;
 		const sql = await getSql(c);
 		const now = new Date().toISOString();
 		const agent: Agent = {

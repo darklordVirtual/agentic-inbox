@@ -43,6 +43,7 @@ update.mutate({ [key]: value });
 const disabled = update.isPending;
 
 return (
+<div className="h-full overflow-y-auto">
 <div className="max-w-2xl mx-auto py-10 px-6 space-y-8">
 <div>
 <h1 className="text-2xl font-bold text-kumo-default">Debt Control — Innstillinger</h1>
@@ -177,6 +178,7 @@ if (v) update.mutate({ bankProvider: v as PluginSettings["bankProvider"] });
 Lagrer…
 </div>
 )}
+</div>
 </div>
 );
 }

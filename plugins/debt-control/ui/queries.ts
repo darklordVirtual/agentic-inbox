@@ -2,10 +2,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as api from "./api";
 
 const KEYS = {
-	settings: (mailboxId: string) => ["debt-control", "settings", mailboxId],
-	bankStatus: (mailboxId: string) => ["debt-control", "bank", mailboxId],
-	cases: (mailboxId: string, status?: string) => ["debt-control", "cases", mailboxId, status ?? "all"],
-	case: (mailboxId: string, caseId: string) => ["debt-control", "case", mailboxId, caseId],
+	settings:     (mailboxId: string) => ["debt-control", "settings", mailboxId],
+	bankStatus:   (mailboxId: string) => ["debt-control", "bank", mailboxId],
+	bankAccounts: (mailboxId: string) => ["debt-control", "bank-accounts", mailboxId],
+	cases:        (mailboxId: string, status?: string) => ["debt-control", "cases", mailboxId, status ?? "all"],
+	case:         (mailboxId: string, caseId: string) => ["debt-control", "case", mailboxId, caseId],
 };
 
 export function useDebtSettings(mailboxId: string | undefined) {
@@ -55,6 +56,27 @@ export function useTriggerSync(mailboxId: string) {
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: KEYS.bankStatus(mailboxId) });
 			qc.invalidateQueries({ queryKey: KEYS.cases(mailboxId) });
+		},
+	});
+}
+
+export function useBankAccounts(mailboxId: string | undefined) {
+	return useQuery({
+		queryKey: mailboxId ? KEYS.bankAccounts(mailboxId) : ["disabled"],
+		queryFn: () => api.listBankAccounts(mailboxId!),
+		enabled: !!mailboxId,
+		staleTime: 60_000,
+	});
+}
+
+export function useUploadCsvStatement(mailboxId: string) {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: (file: File) => api.uploadCsvStatement(mailboxId, file),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: KEYS.bankStatus(mailboxId) });
+			qc.invalidateQueries({ queryKey: KEYS.cases(mailboxId) });
+			qc.invalidateQueries({ queryKey: KEYS.settings(mailboxId) });
 		},
 	});
 }

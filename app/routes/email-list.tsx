@@ -171,6 +171,10 @@ export default function EmailListRoute() {
 	const {
 		data: emailData,
 		isFetching: isRefreshing,
+		isLoading,
+		isError,
+		error,
+		refetch,
 	} = useEmails(mailboxId, params, { refetchInterval: 30_000 });
 
 	const emails = emailData?.emails ?? [];
@@ -309,7 +313,22 @@ export default function EmailListRoute() {
 
 				{/* Email rows */}
 				<div className="flex-1 overflow-y-auto">
-				{isRefreshing && emails.length === 0 ? (
+				{isError ? (
+					<div className="flex flex-col items-center justify-center py-24 px-6 text-center">
+						<EnvelopeSimpleIcon size={48} weight="thin" className="text-kumo-subtle mb-4" />
+						<h3 className="text-base font-semibold text-kumo-default mb-1.5">
+							Could not load emails
+						</h3>
+						<p className="text-sm text-kumo-subtle max-w-xs mb-5">
+							{(error as Error)?.message ?? "An unexpected error occurred. Please try again."}
+						</p>
+						<Button variant="primary" size="sm" onClick={() => refetch()}>
+							Try again
+						</Button>
+					</div>
+				) : isLoading ? (
+					<EmailListSkeleton />
+				) : isRefreshing && emails.length === 0 ? (
 					<EmailListSkeleton />
 				) : emails.length > 0 ? (
 						<div>

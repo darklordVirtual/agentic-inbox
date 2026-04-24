@@ -156,43 +156,46 @@ app.get("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	const limit = intQuery(c, "limit");
 	const sortColumn = c.req.query("sortColumn") as any;
 	const sortDirection = c.req.query("sortDirection") as "ASC" | "DESC" | undefined;
+	const mailboxId = c.req.param("mailboxId")!;
 	const stub = c.var.mailboxStub;
+	const t0 = Date.now();
 
 	if (threaded && folder) {
-		const emails = await (stub as any).getThreadedEmails({ folder, page, limit });
-		const totalCount = await (stub as any).countThreadedEmails(folder);
-		return c.json({ emails, totalCount });
+		try {
+			const result = await (stub as any).getThreadedEmailsPage({ folder, page, limit });
+			console.log(`[api] listEmails threaded folder=${folder} mailbox=${mailboxId} took=${Date.now() - t0}ms emails=${result.emails.length} total=${result.totalCount}`);
+			return c.json(result);
+		} catch (err) {
+			console.error(`[api] listEmails threaded failed folder=${folder} mailbox=${mailboxId} took=${Date.now() - t0}ms`, (err as Error).message);
+			return c.json({ error: "Failed to load emails" }, 500);
+		}
 	}
-	const emails = await stub.getEmails({ folder, thread_id, page, limit, sortColumn, sortDirection });
-	if (folder) {
-		const totalCount = await stub.countEmails({ folder, thread_id });
-		return c.json({ emails, totalCount });
+
+	try {
+		const emails = await stub.getEmails({ folder, thread_id, page, limit, sortColumn, sortDirection });
+		if (folder) {
+			const totalCount = await stub.countEmails({ folder, thread_id });
+			console.log(`[api] listEmails folder=${folder} mailbox=${mailboxId} took=${Date.now() - t0}ms emails=${emails.length}`);
+			return c.json({ emails, totalCount });
+		}
+		console.log(`[api] listEmails mailbox=${mailboxId} took=${Date.now() - t0}ms emails=${emails.length}`);
+		return c.json(emails);
+	} catch (err) {
+		console.error(`[api] listEmails failed folder=${folder} mailbox=${mailboxId} took=${Date.now() - t0}ms`, (err as Error).message);
+		return c.json({ error: "Failed to load emails" }, 500);
 	}
-	return c.json(emails);
 });
 
 app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	const mailboxId = c.req.param("mailboxId")!;
-
-	let body: ReturnType<typeof SendEmailRequestSchema.parse>;
-	try {
-		body = SendEmailRequestSchema.parse(await c.req.json());
-	} catch (e) {
-		console.error(`[send] Schema validation failed for mailbox=${mailboxId}:`, (e as Error).message);
-		return c.json({ error: "Invalid request body", details: (e as Error).message }, 400);
-	}
+	const body = SendEmailRequestSchema.parse(await c.req.json());
 	const { to, cc, bcc, from, subject, html, text, attachments, in_reply_to, references, thread_id } = body;
-
-	console.log(`[send] compose from=${JSON.stringify(from)} to=${JSON.stringify(to)} mailbox=${mailboxId}`);
 
 	let toStr: string, fromEmail: string, fromDomain: string;
 	try {
 		({ toStr, fromEmail, fromDomain } = validateSender(to, from, mailboxId));
 	} catch (e) {
-		if (e instanceof SenderValidationError) {
-			console.warn(`[send] Sender validation failed: ${(e as Error).message} (mailbox=${mailboxId}, from=${JSON.stringify(from)})`);
-			return c.json({ error: e.message }, 400);
-		}
+		if (e instanceof SenderValidationError) return c.json({ error: e.message }, 400);
 		throw e;
 	}
 
@@ -200,17 +203,9 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	const stub = c.var.mailboxStub;
 	const rateLimitError = await (stub as any).checkSendRateLimit();
 	if (rateLimitError) return c.json({ error: rateLimitError }, 429);
+	const attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
 
-	let attachmentData: StoredAttachment[];
-	try {
-		attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
-	} catch (e) {
-		console.error(`[send] Failed to store attachments for messageId=${messageId}:`, (e as Error).message);
-		throw e;
-	}
-
-	try {
-		await stub.createEmail(Folders.SENT, {
+	await stub.createEmail(Folders.SENT, {
 		id: messageId, subject, sender: fromEmail, recipient: toStr,
 		cc: cc ? (Array.isArray(cc) ? cc.join(", ") : cc).toLowerCase() : null,
 		bcc: bcc ? (Array.isArray(bcc) ? bcc.join(", ") : bcc).toLowerCase() : null,
@@ -226,23 +221,13 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 			{ key: "message-id", value: `<${outgoingMessageId}>` },
 		]),
 	}, attachmentData);
-	} catch (e) {
-		console.error(`[send] Failed to persist email to SENT folder (messageId=${messageId}, mailbox=${mailboxId}):`, (e as Error).message, (e as Error).stack);
-		throw e;
-	}
-
-	console.log(`[send] Email persisted, enqueueing delivery via EMAIL binding (messageId=${messageId}, to=${toStr})`);
 
 	c.executionCtx.waitUntil(
 		sendEmail(c.env.EMAIL, {
 			to, cc, bcc, from, subject, html, text,
 			attachments: attachments?.map((att) => ({ content: att.content, filename: att.filename, type: att.type, disposition: att.disposition || "attachment", contentId: att.contentId })),
 			...(in_reply_to ? { headers: buildThreadingHeaders(in_reply_to, references || []) } : {}),
-		}).then(() => {
-			console.log(`[send] EMAIL binding delivery succeeded (messageId=${messageId})`);
-		}).catch((e) => {
-			console.error(`[send] EMAIL binding delivery failed (messageId=${messageId}, to=${toStr}):`, (e as Error).message, { code: (e as any).code });
-		}),
+		}).catch((e) => console.error("Deferred email delivery failed:", (e as Error).message)),
 	);
 	return c.json({ id: messageId, status: "sent" }, 202);
 });
@@ -444,13 +429,8 @@ async function streamToArrayBuffer(stream: ReadableStream, streamSize: number) {
 	return result;
 }
 
-type InboundEmailMessage = {
-	raw: ReadableStream;
-	rawSize: number;
-};
-
-async function receiveEmail(message: InboundEmailMessage, env: Env, ctx: ExecutionContext) {
-	const rawEmail = await streamToArrayBuffer(message.raw, message.rawSize);
+async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env: Env, ctx: ExecutionContext) {
+	const rawEmail = await streamToArrayBuffer(event.raw, event.rawSize);
 	const parsedEmail = await new PostalMime().parse(rawEmail);
 
 	if (!parsedEmail.to?.length || !parsedEmail.to[0].address) throw new Error("received email with empty to");

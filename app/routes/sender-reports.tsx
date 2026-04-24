@@ -25,6 +25,7 @@ export default function SenderReportsRoute() {
 	const reports = data?.reports ?? [];
 
 	return (
+		<div className="h-full overflow-y-auto">
 		<div className="max-w-4xl mx-auto py-10 px-6 space-y-6">
 			<div>
 				<h1 className="text-2xl font-bold text-kumo-default flex items-center gap-2">
@@ -121,6 +122,7 @@ export default function SenderReportsRoute() {
 					))}
 				</div>
 			)}
+		</div>
 		</div>
 	);
 }

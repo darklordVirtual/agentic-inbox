@@ -2,36 +2,45 @@ import type { PluginManifest } from "../../workers/plugins/types";
 
 export const debtControlManifest: PluginManifest = {
 	id: "debt-control",
-	name: "Debt Control",
+	name: "Gjeldskontroll",
 	version: "0.1.0",
 	description:
-		"Mailbox-native debtor operations engine. Classifies incoming demands, " +
-		"links them to cases, reconciles bank transactions and suggests actions.",
+		"Norsk gjeldshåndtering for privatkunder. Klassifiserer innkommende " +
+		"inkassokrav og fakturaer, sjekker automatisk om krav er betalt via " +
+		"SpareBank 1 API, og prioriterer utestående betalinger etter tilgjengelig " +
+		"saldo. Overholder norsk inkassolovgivning (inkassoloven, " +
+		"finansavtaleloven og forsinkelsesrenteloven).",
 	settingsSchema: {
 		enabled: {
 			type: "boolean",
-			label: "Enable Debt Control",
+			label: "Aktiver Gjeldskontroll",
 			default: true,
 			required: false,
 		},
 		bankProvider: {
 			type: "string",
-			label: "Bank provider",
-			description: "Which bank provider to use: sparebank1 | csv | none",
+			label: "Banktilkobling",
+			description:
+				"Velg transaksjonskilde for betalingsavstемming. " +
+				"sparebank1 = direkte API-tilkobling (krever API-nøkler fra " +
+				"sparebank1.no/open-api), csv = manuell kontoutskrift, " +
+				"none = ingen bankintegrasjon.",
 			default: "none",
 		},
 		autoClassify: {
 			type: "boolean",
-			label: "Auto-classify incoming emails",
+			label: "Automatisk klassifisering av e-post",
 			description:
-				"Automatically run classification when a new email arrives.",
+				"Klassifiser automatisk innkommende e-poster som inkassokrav, " +
+				"fakturaer eller purringer ved mottak.",
 			default: true,
 		},
 		autoReconcile: {
 			type: "boolean",
-			label: "Auto-reconcile on bank sync",
+			label: "Automatisk betalingsavstемming",
 			description:
-				"Automatically match transactions to open cases after a sync.",
+				"Koble banktransaksjoner til åpne saker automatisk etter synk. " +
+				"Marker krav som betalt og prioriter gjenstående etter saldo.",
 			default: true,
 		},
 	},

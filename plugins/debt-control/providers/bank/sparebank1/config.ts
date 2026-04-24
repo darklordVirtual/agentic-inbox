@@ -8,6 +8,7 @@
  */
 
 export const SB1_BASE_URL = "https://api.sparebank1.no/personal/banking/transactions";
+export const SB1_ACCOUNTS_URL = "https://api.sparebank1.no/personal/banking/accounts";
 
 export interface SpareBank1Secrets {
 	/** OAuth2 client_id. Set via: wrangler secret put SB1_CLIENT_ID */

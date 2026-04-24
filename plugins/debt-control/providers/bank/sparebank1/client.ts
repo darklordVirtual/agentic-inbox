@@ -1,13 +1,15 @@
 /**
  * SpareBank 1 HTTP client.
  *
- * All raw HTTP calls to the SpareBank 1 Transactions API live here.
+ * All raw HTTP calls to the SpareBank 1 APIs live here.
  * Authentication headers are injected; no business logic.
  *
- * Docs: https://api.sparebank1.no/personal/banking/transactions
+ * Docs: https://developer.sparebank1.no
+ *   Transactions: https://api.sparebank1.no/personal/banking/transactions
+ *   Accounts:     https://api.sparebank1.no/personal/banking/accounts
  */
 
-import { SB1_BASE_URL } from "./config";
+import { SB1_BASE_URL, SB1_ACCOUNTS_URL } from "./config";
 
 export interface SB1TransactionListParams {
 	accountId?: string;
@@ -30,6 +32,17 @@ export interface SB1RawTransaction {
 export interface SB1RawClassifiedTransaction extends SB1RawTransaction {
 	category?: { id?: string; name?: string };
 	merchant?: { name?: string };
+}
+
+export interface SB1RawAccount {
+	accountId: string;
+	accountNumber?: string;
+	accountName?: string;
+	accountType?: string;
+	balance?: { value: number; currency: string };
+	availableBalance?: { value: number; currency: string };
+	ownerCustomerNumber?: string;
+	[key: string]: unknown;
 }
 
 export class SpareBank1Client {
@@ -81,6 +94,29 @@ export class SpareBank1Client {
 	async getTransactionDetailsClassified(id: string): Promise<SB1RawClassifiedTransaction> {
 		return this.get<SB1RawClassifiedTransaction>(`/${encodeURIComponent(id)}/details/classified`);
 	}
+
+	// ── Accounts API ─────────────────────────────────────────────────────────
+
+	async listAccounts(): Promise<SB1RawAccount[]> {
+		const url = new URL(SB1_ACCOUNTS_URL);
+		const res = await fetch(url.toString(), { method: "GET", headers: this.headers });
+		if (!res.ok) {
+			throw new Error(`SpareBank1 Accounts API error: ${res.status} ${res.statusText}`);
+		}
+		const data = await res.json() as { accounts?: SB1RawAccount[] };
+		return data.accounts ?? [];
+	}
+
+	async getAccount(accountId: string): Promise<SB1RawAccount> {
+		const url = new URL(`${SB1_ACCOUNTS_URL}/${encodeURIComponent(accountId)}`);
+		const res = await fetch(url.toString(), { method: "GET", headers: this.headers });
+		if (!res.ok) {
+			throw new Error(`SpareBank1 Account detail error: ${res.status} ${res.statusText}`);
+		}
+		return res.json() as Promise<SB1RawAccount>;
+	}
+
+	// ── Transactions (export) ─────────────────────────────────────────────────
 
 	async exportCsv(params: SB1TransactionListParams): Promise<Uint8Array> {
 		const url = new URL(`${SB1_BASE_URL}/export`);

@@ -1,7 +1,13 @@
 /**
- * Debt Control plugin entry point.
+ * Gjeldskontroll — norsk gjeldshåndtering for privatkunder.
  *
- * This is the only file the plugin system needs to import.
+ * Klassifiserer innkommende inkassokrav og fakturaer, sjekker automatisk om
+ * krav er betalt via SpareBank 1 Open API (sparebank1.no/open-api), og
+ * prioriterer utestående betalinger etter tilgjengelig banksaldo.
+ *
+ * Overholder inkassoloven, finansavtaleloven og forsinkelsesrenteloven.
+ *
+ * Se plugins/debt-control/README.md for fullstendig dokumentasjon.
  */
 
 import type { InboxPlugin } from "../../workers/plugins/types";

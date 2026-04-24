@@ -3,12 +3,12 @@
  * Uses client.ts for HTTP + mapper.ts for type conversion.
  */
 
-import type { BankProvider, ConnectionStatus, RawTransaction, TransactionFilter } from "../types";
+import type { BankProvider, BankAccount, ConnectionStatus, RawTransaction, TransactionFilter } from "../types";
 import type { SpareBank1Secrets } from "./config";
 import { validateSecrets } from "./config";
 import { buildAuthHeaders } from "./auth";
 import { SpareBank1Client } from "./client";
-import { mapTransaction } from "./mapper";
+import { mapTransaction, mapAccount } from "./mapper";
 
 export class SpareBank1Provider implements BankProvider {
 	readonly id = "sparebank1";
@@ -60,5 +60,10 @@ export class SpareBank1Provider implements BankProvider {
 			fromDate: filter.fromDate,
 			toDate: filter.toDate,
 		});
+	}
+
+	async listAccounts(): Promise<BankAccount[]> {
+		const raw = await this.client.listAccounts();
+		return raw.map(mapAccount);
 	}
 }

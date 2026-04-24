@@ -65,8 +65,45 @@ export function testBankConnection(mailboxId: string): Promise<BankStatus> {
 	return request(`${base(mailboxId)}/settings/bank/test`, { method: "POST" });
 }
 
+export interface BankAccount {
+	accountId: string;
+	accountNumber?: string;
+	name: string;
+	type?: string;
+	balance?: number;
+	availableBalance?: number;
+	currency: string;
+}
+
+export function listBankAccounts(mailboxId: string): Promise<{ accounts: BankAccount[] }> {
+	return request(`${base(mailboxId)}/settings/bank/accounts`);
+}
+
 export function triggerBankSync(mailboxId: string): Promise<{ imported: number; total: number }> {
 	return request(`${base(mailboxId)}/bank/sync`, { method: "POST" });
+}
+
+export async function uploadCsvStatement(
+	mailboxId: string,
+	file: File,
+): Promise<{ imported: number; total: number }> {
+	const formData = new FormData();
+	formData.append("file", file);
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+	try {
+		const res = await fetch(`${base(mailboxId)}/bank/upload-csv`, {
+			method: "POST",
+			body: formData,
+			signal: controller.signal,
+		});
+		clearTimeout(timer);
+		const body = await res.json().catch(() => ({}));
+		if (!res.ok) throw new ApiError(res.status, body);
+		return body as { imported: number; total: number };
+	} finally {
+		clearTimeout(timer);
+	}
 }
 
 // ── Cases ──────────────────────────────────────────────────────────

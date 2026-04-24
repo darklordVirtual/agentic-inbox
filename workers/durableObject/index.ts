@@ -446,6 +446,29 @@ export class MailboxDO extends DurableObject<Env> {
 		return row?.total ?? 0;
 	}
 
+	/**
+	 * Returns both the threaded email page AND the total conversation count in a
+	 * single DO invocation. Avoids the extra Worker → DO round-trip that
+	 * previously made folder loads visibly slow.
+	 */
+	async getThreadedEmailsPage(options: GetEmailsOptions & { folder: string }): Promise<{
+		emails: ReturnType<typeof Array.prototype.map>;
+		totalCount: number;
+	}> {
+		const t0 = Date.now();
+		const [emails, totalCount] = await Promise.all([
+			this.getThreadedEmails(options),
+			this.countThreadedEmails(options.folder),
+		]);
+		const elapsed = Date.now() - t0;
+		if (elapsed > 200) {
+			console.warn(`[DO] getThreadedEmailsPage slow: ${elapsed}ms folder=${options.folder} page=${options.page ?? 1}`);
+		} else {
+			console.log(`[DO] getThreadedEmailsPage: ${elapsed}ms folder=${options.folder} page=${options.page ?? 1} emails=${emails.length} total=${totalCount}`);
+		}
+		return { emails, totalCount };
+	}
+
 	// ── Single email operations (Drizzle) ──────────────────────────
 
 	async getEmail(id: string) {

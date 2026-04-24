@@ -6,17 +6,6 @@ import type { Migration } from "../../../workers/durableObject/migrations";
  */
 export const debtControlMigrations: Migration[] = [
 	{
-		name: "debt_control_002_settings_v2",
-		sql: `
-ALTER TABLE dc_settings ADD COLUMN IF NOT EXISTS auto_draft_objection INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE dc_settings ADD COLUMN IF NOT EXISTS auto_draft_info_request INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE dc_settings ADD COLUMN IF NOT EXISTS enable_legality_check INTEGER NOT NULL DEFAULT 1;
-ALTER TABLE dc_settings ADD COLUMN IF NOT EXISTS short_deadline_days INTEGER NOT NULL DEFAULT 7;
-ALTER TABLE dc_settings ADD COLUMN IF NOT EXISTS high_value_threshold_nok INTEGER NOT NULL DEFAULT 10000;
-ALTER TABLE dc_settings ADD COLUMN IF NOT EXISTS auto_escalate_court_letters INTEGER NOT NULL DEFAULT 1;
-		`,
-	},
-	{
 		name: "debt_control_001_initial",
 		sql: `
 -- Plugin settings (one row per plugin instance)
@@ -185,5 +174,32 @@ CREATE TABLE IF NOT EXISTS dc_collector_profiles (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS dc_collector_profiles_name ON dc_collector_profiles(mailbox_id, name);
 		`,
+	},
+	// NOTE: Each ADD COLUMN is a separate migration because:
+	// 1. SQLite does not support "ALTER TABLE ... ADD COLUMN IF NOT EXISTS"
+	// 2. The migration runner tracks by name, making each individually idempotent
+	{
+		name: "debt_control_002_add_auto_draft_objection",
+		sql: `ALTER TABLE dc_settings ADD COLUMN auto_draft_objection INTEGER NOT NULL DEFAULT 0;`,
+	},
+	{
+		name: "debt_control_002_add_auto_draft_info_request",
+		sql: `ALTER TABLE dc_settings ADD COLUMN auto_draft_info_request INTEGER NOT NULL DEFAULT 0;`,
+	},
+	{
+		name: "debt_control_002_add_enable_legality_check",
+		sql: `ALTER TABLE dc_settings ADD COLUMN enable_legality_check INTEGER NOT NULL DEFAULT 1;`,
+	},
+	{
+		name: "debt_control_002_add_short_deadline_days",
+		sql: `ALTER TABLE dc_settings ADD COLUMN short_deadline_days INTEGER NOT NULL DEFAULT 7;`,
+	},
+	{
+		name: "debt_control_002_add_high_value_threshold_nok",
+		sql: `ALTER TABLE dc_settings ADD COLUMN high_value_threshold_nok INTEGER NOT NULL DEFAULT 10000;`,
+	},
+	{
+		name: "debt_control_002_add_auto_escalate_court_letters",
+		sql: `ALTER TABLE dc_settings ADD COLUMN auto_escalate_court_letters INTEGER NOT NULL DEFAULT 1;`,
 	},
 ];

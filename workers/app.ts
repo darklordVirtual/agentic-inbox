@@ -92,24 +92,6 @@ app.all("/mcp/*", async (c) => {
 	return mcpHandler.fetch(c.req.raw, c.env, c.executionCtx as ExecutionContext);
 });
 
-// Global error-logging middleware — logs all unhandled 500s with method, path and error details
-app.use("*", async (c, next) => {
-	try {
-		await next();
-	} catch (err) {
-		const error = err as Error;
-		console.error(
-			`[ERROR] ${c.req.method} ${c.req.path}`,
-			{
-				name: error.name,
-				message: error.message,
-				stack: error.stack,
-			},
-		);
-		throw err;
-	}
-});
-
 // Mount the API routes
 app.route("/", apiApp);
 
@@ -131,12 +113,12 @@ app.all("*", (c) => {
 export default {
 	fetch: app.fetch,
 	async email(
-		message: ForwardableEmailMessage,
+		event: { raw: ReadableStream; rawSize: number },
 		env: Env,
 		ctx: ExecutionContext,
 	) {
 		try {
-			await receiveEmail(message, env, ctx);
+			await receiveEmail(event, env, ctx);
 		} catch (e) {
 			console.error("Failed to process incoming email:", (e as Error).message, (e as Error).stack);
 			// Re-throw so Cloudflare's email routing can retry delivery or bounce the message.

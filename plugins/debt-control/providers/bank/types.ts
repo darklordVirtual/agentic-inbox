@@ -33,6 +33,16 @@ export interface ConnectionStatus {
 	message?: string;
 }
 
+export interface BankAccount {
+	accountId: string;
+	accountNumber?: string;
+	name: string;
+	type?: string;
+	balance?: number;
+	availableBalance?: number;
+	currency: string;
+}
+
 export interface BankProvider {
 	readonly id: string;
 
@@ -44,4 +54,7 @@ export interface BankProvider {
 
 	/** Export transactions as CSV bytes (for download or archival). */
 	exportTransactionsCsv(filter: TransactionFilter): Promise<Uint8Array>;
+
+	/** List bank accounts (optional — only supported by API-based providers). */
+	listAccounts?(): Promise<BankAccount[]>;
 }

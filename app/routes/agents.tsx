@@ -10,6 +10,8 @@ import {
 	ShieldIcon,
 	StarIcon,
 	WrenchIcon,
+	WarningIcon,
+	CheckCircleIcon,
 } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useParams, NavLink } from "react-router";
@@ -541,6 +543,7 @@ export default function AgentsDashboardRoute() {
 	const enabledCount = agents.filter((a) => a.enabled).length;
 
 	return (
+		<div className="h-full overflow-y-auto">
 		<div className="max-w-3xl mx-auto py-10 px-6 space-y-8">
 			{/* Header */}
 			<div className="flex items-start justify-between">
@@ -616,6 +619,7 @@ export default function AgentsDashboardRoute() {
 					<AgentForm mailboxId={mailboxId!} onClose={() => setCreateOpen(false)} />
 				</Dialog>
 			</Dialog.Root>
+		</div>
 		</div>
 	);
 }
