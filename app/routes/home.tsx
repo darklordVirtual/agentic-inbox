@@ -128,14 +128,25 @@ export default function HomeRoute() {
 		}
 	};
 
+	// Merge EMAIL_ADDRESSES (pinned) + R2 mailboxes, deduplicating by email.
+	// EMAIL_ADDRESSES are always shown even if the R2 config file hasn't been
+	// created yet; R2 mailboxes that aren't in EMAIL_ADDRESSES are also shown.
 	const isConfigured = emailAddresses.length > 0;
-	const accounts = isConfigured
-		? emailAddresses.map((addr) => ({
-				id: addr,
-				email: addr,
-				name: addr.split("@")[0] || addr,
-			}))
-		: mailboxes;
+	const pinnedSet = new Set(emailAddresses.map((a) => a.toLowerCase()));
+	const accounts: { id: string; email: string; name: string }[] = [
+		...emailAddresses.map((addr) => ({
+			id: addr,
+			email: addr,
+			name: addr.split("@")[0] || addr,
+		})),
+		...mailboxes
+			.filter((m) => !pinnedSet.has(m.email.toLowerCase()))
+			.map((m) => ({
+				id: m.id,
+				email: m.email,
+				name: (m as { name?: string }).name ?? m.email.split("@")[0] ?? m.id,
+			})),
+	];
 
 	const isLoading = !configData;
 
