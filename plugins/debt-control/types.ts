@@ -6,23 +6,51 @@
 // ── Classification ──────────────────────────────────────────────────
 
 export type DocumentKind =
-	| "initial_demand"      // Første kravbrev
-	| "reminder"            // Purring
-	| "collection_notice"   // Inkassovarsel
-	| "collection_demand"   // Inkassokrav
-	| "legal_notice"        // Rettslig varsel
-	| "court_letter"        // Stevning / forliksklage
-	| "debt_settlement"     // Gjeldsforlik / nedbetalingsavtale
-	| "payment_confirmation"// Kvittering / betalingsbekreftelse
+	// Norwegian debt lifecycle
+	| "inkassovarsel"           // Inkassovarsel (første purring etter varsel, §9-2 inkassoloven)
+	| "betalingsoppfordring"    // Betalingsoppfordring (formelt krav fra inkassoselskap)
+	| "betalingspaaminnelse"    // Betalingspåminnelse (vennlig påminnelse)
+	| "restbeloep"              // Brev om restbeløp ("fortsatt ikke betalt")
+	| "informasjon_om_krav"     // Informasjonsbrev om krav / videre prosess
+	| "langtidsoppfoelging"     // Langtidsoppfølging / overvåkning
+	| "sammenslaaing"           // Sammenslåing - flere faktura under ett saksnummer
+	| "betalingsbekreftelse"    // Bekreftelse på betaling / kvittering
+	| "avslutningsbrev"         // Brev om at saken er avsluttet
+	| "redusert_oppgjoer"       // Tilbud om redusert oppgjør / avslag på salær
+	| "innsigelse_besvart"      // Inkassoselskapets svar på innsigelse
+	| "kravspesifikasjon"       // Detaljert kravspesifikasjon
+	| "ticket_timeline"         // Systemlogg / Puzzel Contact Centre / ticket
+	// Legacy kinds (kept for backward compatibility)
+	| "initial_demand"          // Første kravbrev (legacy alias)
+	| "reminder"                // Purring (legacy)
+	| "collection_notice"       // Inkassovarsel (legacy)
+	| "collection_demand"       // Inkassokrav (legacy)
+	| "legal_notice"            // Rettslig varsel
+	| "court_letter"            // Stevning / forliksklage
+	| "debt_settlement"         // Gjeldsforlik / nedbetalingsavtale
+	| "payment_confirmation"    // Kvittering / betalingsbekreftelse (legacy)
 	| "unknown";
 
 export type CaseStatus =
+	| "notice_received"                     // Inkassovarsel mottatt
+	| "collection_demand"                   // Betalingsoppfordring
+	| "reminder"                            // Påminnelse
+	| "fee_increase_warning"                // Varsel om salærøkning
+	| "long_term_monitoring"                // Langtidsovervåkning
+	| "settlement_offer"                    // Tilbud om redusert oppgjør
+	| "objection_registered"                // Innsigelse registrert
+	| "processing_limitation_requested"     // Krav om stans i behandling
+	| "principal_only_settlement"           // Tilbud om hovedstol som oppgjør
+	| "principal_paid_fees_remain"          // Hovedstol betalt, salær gjenstår
+	| "paid"                                // Betalt
+	| "closed"                              // Avsluttet
+	| "disputed"                            // Bestridt
+	| "consolidated"                        // Sammenslått sak
+	// Legacy aliases
 	| "open"
 	| "waiting_response"
-	| "disputed"
-	| "paid"
-	| "closed"
-	| "archived";
+	| "archived"
+	| "unknown";
 
 export type CasePriority =
 	| "pay_now"
@@ -34,18 +62,79 @@ export type CasePriority =
 
 // ── Core domain objects ──────────────────────────────────────────────
 
+/** Detailed breakdown of amounts on a debt case */
+export interface DebtAmountBreakdown {
+	principal: number | null;       // Hovedstol
+	interest: number | null;        // Renter
+	fee: number | null;             // Gebyr (purregebyr, forsinkelsesrente m.m.)
+	reminderFee: number | null;     // Purregebyr spesifikt
+	legalCosts: number | null;      // Salær / inndrivingskostnader
+	paid: number | null;            // Bekreftet betalt
+	outstanding: number | null;     // Utestående (beløp å betale)
+	amountToPay: number | null;     // «Beløp å betale» fra brev
+	currency: string;
+}
+
+/** Single invoice/krav linked to a case (relevant for consolidation) */
+export interface DebtInvoice {
+	invoiceNo: string;
+	originalAmount: number | null;
+	dueDate: string | null;
+	vehicleReg: string | null;      // Regnr hvis aktuelt (parkering, bompenger)
+	paidAmount: number | null;
+}
+
+/** Immutable audit event — one per email/attachment that produced data */
+export interface DebtEvent {
+	id: string;
+	caseId: string;
+	date: string;                   // ISO date of the document (not ingestion time)
+	sourceEmailId: string;
+	sourceAttachmentId: string | null;
+	sourceFileName: string | null;
+	kind: DocumentKind;
+	creditor: string | null;
+	externalCaseNo: string | null;
+	invoiceNos: string[];           // JSON array
+	amounts: DebtAmountBreakdown;
+	deadline: string | null;        // betalingsfrist
+	rawTextHash: string | null;     // sha256 hex of full extracted text (not the text itself)
+	extractedTextPreview: string | null; // First 200 chars only
+	createdAt: string;
+}
+
 export interface DebtCase {
 	id: string;
 	mailboxId: string;
 	creditor: string;
-	reference: string | null;
-	amountDue: number | null;        // NOK (or original currency)
-	currency: string;                // ISO 4217, default "NOK"
-	dueDate: string | null;          // ISO date string
+	reference: string | null;           // Legacy field (KID / ref); prefer externalCaseNo
+	externalCaseNo: string | null;      // Inkassoselskapets saksnummer
+	// ── Amount ───────────────────────────────────────────────────
+	amountDue: number | null;           // Total utestående (legacy / quick access)
+	currency: string;
+	dueDate: string | null;
+	amounts: DebtAmountBreakdown | null;
+	// ── Invoices ─────────────────────────────────────────────────
+	invoices: DebtInvoice[];            // Alle fakturaer (kan være flere ved sammenslåing)
+	// ── Consolidation ─────────────────────────────────────────────
+	parentCaseNo: string | null;        // Satt hvis denne er innlemmet i en annen sak
+	mergedCaseNos: string[];            // Saksnumre som er slått inn i dette
+	// ── State ─────────────────────────────────────────────────────
 	status: CaseStatus;
 	priority: CasePriority;
+	// ── Email references ──────────────────────────────────────────
 	firstEmailId: string | null;
 	lastEmailId: string | null;
+	// ── Key dates ─────────────────────────────────────────────────
+	firstSeenAt: string | null;
+	lastSeenAt: string | null;
+	objectionDate: string | null;       // Dato innsigelse ble registrert
+	processingLimitationRequestedAt: string | null; // Begjæring om stans
+	closedAt: string | null;
+	// ── Settlement ────────────────────────────────────────────────
+	settlementOfferAmount: number | null;
+	settlementOfferDeadline: string | null;
+	// ── Timestamps ────────────────────────────────────────────────
 	createdAt: string;
 	updatedAt: string;
 }
@@ -65,22 +154,62 @@ export interface Finding {
 	id: string;
 	caseId: string;
 	code: FindingCode;
-	severity: "info" | "warning" | "critical";
+	severity: "info" | "warning" | "critical" | "opportunity";
 	description: string;
 	detectedAt: string;
 }
 
 export type FindingCode =
+	// New comprehensive codes
+	| "HIGH_FEE_RATIO"
+	| "PRINCIPAL_PAID_FEES_REMAIN"
+	| "FEE_INCREASE_IMMINENT"
+	| "DOUBLE_FEE_APPLIED"
+	| "CASE_CONSOLIDATED"
+	| "SETTLEMENT_OFFER_AVAILABLE"
+	| "OBJECTION_REGISTERED"
+	| "PROCESSING_LIMITATION_REQUESTED"
+	| "COLLECTION_CONTINUED_AFTER_OBJECTION"
+	| "PAYMENT_CONFIRMED_CLOSED"
+	| "CLAIM_SPEC_SHOWS_ZERO_FEES"
+	| "POSSIBLE_DUPLICATE_CASE"
+	| "ONLY_PRINCIPAL_RECOMMENDED"
+	| "LOW_PRINCIPAL_HIGH_COLLECTION_COST"
+	| "DEADLINE_SOON"
+	| "LEGAL_ESCALATION_LANGUAGE"
+	| "MISSING_ORIGINAL_INVOICE"
+	| "HUMAN_REVIEW_RECOMMENDED"
+	// Legacy codes (kept for backward compat)
 	| "POSSIBLE_ALREADY_PAID"
 	| "MISSING_LEGAL_BASIS"
 	| "FRAGMENTATION_SUSPECTED"
 	| "EXCESSIVE_FEES"
 	| "SHORT_DEADLINE"
-	| "DEBT_EXPIRED"                 // Mulig foreldelse
-	| "AMOUNT_MISMATCH"              // Beløp stemmer ikke med forrige varsel
+	| "DEBT_EXPIRED"
+	| "AMOUNT_MISMATCH"
 	| "DUPLICATE_DEMAND"
 	| "MISSING_SENDER_IDENTITY"
 	| "REVIEW_REQUIRED";
+
+// ── Recommended action ───────────────────────────────────────────────
+
+export type RecommendedActionKind =
+	| "PAY_PRINCIPAL_BEFORE_FEES"
+	| "REQUEST_DOCUMENTATION"
+	| "FILE_OBJECTION"
+	| "REQUEST_PROCESSING_LIMITATION"
+	| "OFFER_PRINCIPAL_AS_FINAL_SETTLEMENT"
+	| "VERIFY_PAYMENT"
+	| "MARK_CLOSED"
+	| "EXPORT_EVIDENCE_PACK"
+	| "HUMAN_REVIEW";
+
+export interface RecommendedAction {
+	kind: RecommendedActionKind;
+	summary: string;
+	rationale: string;
+	urgency: "immediate" | "soon" | "when_convenient";
+}
 
 export interface SuggestedAction {
 	id: string;
@@ -97,6 +226,37 @@ export type ActionKind =
 	| "object_now"
 	| "request_documentation"
 	| "already_paid_confirm";
+
+// ── Letter templates ──────────────────────────────────────────────────
+
+export type LetterKind =
+	| "objection_on_fees"
+	| "principal_as_settlement"
+	| "payment_status_request"
+	| "processing_limitation_request";
+
+export interface LetterDraft {
+	kind: LetterKind;
+	subject: string;
+	body: string;
+}
+
+// ── Evidence pack ─────────────────────────────────────────────────────
+
+export interface DebtEvidencePack {
+	generatedAt: string;
+	caseSummary: string;
+	creditor: string;
+	externalCaseNo: string | null;
+	invoices: DebtInvoice[];
+	timeline: DebtEvent[];
+	amountEvolution: Array<{ date: string; amountToPay: number | null; source: string }>;
+	payments: Array<{ date: string; amount: number; source: string }>;
+	findings: Finding[];
+	recommendedAction: RecommendedAction | null;
+	letterDrafts: LetterDraft[];
+	sourceDocumentRefs: Array<{ emailId: string; attachmentId: string | null; kind: DocumentKind; date: string }>;
+}
 
 // ── Bank reconciliation ──────────────────────────────────────────────
 

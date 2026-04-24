@@ -12,16 +12,33 @@ import { classifyEmail, classifyEmailWithAI } from "../domain/classification-eng
 import { processEmail } from "../domain/case-engine";
 import { runLegalityChecks } from "../domain/legality-engine";
 import { documentsRepo } from "../storage/repos/documents.repo";
+import { eventsRepo } from "../storage/repos/events.repo";
 import { findingsRepo } from "../storage/repos/findings.repo";
 import { settingsRepo } from "../storage/repos/settings.repo";
 
 const RELEVANT_KINDS = new Set([
+	// Legacy kinds
 	"initial_demand",
 	"reminder",
 	"collection_notice",
 	"collection_demand",
 	"legal_notice",
 	"court_letter",
+	"payment_confirmation",
+	// New Norwegian-specific kinds
+	"inkassovarsel",
+	"betalingsoppfordring",
+	"betalingspaaminnelse",
+	"restbeloep",
+	"informasjon_om_krav",
+	"langtidsoppfoelging",
+	"sammenslaaing",
+	"betalingsbekreftelse",
+	"avslutningsbrev",
+	"redusert_oppgjoer",
+	"innsigelse_besvart",
+	"kravspesifikasjon",
+	"ticket_timeline",
 ]);
 
 /** Minimum regex confidence below which we ask the AI to classify instead. */
@@ -72,18 +89,23 @@ export async function onEmailReceived(
 
 	// ── 4. Create/update case and document ──────────────────────────
 	const result = processEmail(ctx.sql, {
-		emailId:        payload.emailId,
-		mailboxId:      ctx.mailboxId,
+		emailId:           payload.emailId,
+		mailboxId:         ctx.mailboxId,
 		classification,
-		bodyText:       payload.body ?? "",
-		attachmentTexts: pdfTexts,
-		attachmentIds:  pdfAttachmentIds,
+		bodyText:          payload.body ?? "",
+		attachmentTexts:   pdfTexts,
+		attachmentIds:     pdfAttachmentIds,
+		attachmentFileNames: payload.attachments
+			.filter((a) => a.mimetype === "application/pdf" || a.filename.toLowerCase().endsWith(".pdf"))
+			.map((a) => a.filename),
+		emailDate: undefined,
 	});
 
-	// ── 5. Run legality checks and persist findings ──────────────────
-	// Use ALL docs for the case so historical checks (e.g. payment-already-on-file) work
-	const allDocs = documentsRepo.findByCaseId(ctx.sql, result.case.id);
-	const findings = runLegalityChecks(result.case, allDocs);
+	// ── 5. Run finding rules and persist findings ────────────────────
+	// Use ALL docs so historical checks (e.g. double-fee, payment-on-file) work
+	const allDocs   = documentsRepo.findByCaseId(ctx.sql, result.case.id);
+	const allEvents = eventsRepo.findByCaseId(ctx.sql, result.case.id);
+	const findings  = runLegalityChecks(result.case, allDocs, allEvents);
 	for (const f of findings) {
 		findingsRepo.upsert(ctx.sql, f);
 	}
