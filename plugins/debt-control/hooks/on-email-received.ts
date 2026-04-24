@@ -56,13 +56,21 @@ export async function onEmailReceived(
 	const pdfAttachmentIds: string[] = [];
 
 	for (const att of payload.attachments) {
-		if (att.mimetype === "application/pdf" || att.filename.toLowerCase().endsWith(".pdf")) {
+		const lowerName = att.filename.toLowerCase();
+		const isPdf =
+			att.mimetype === "application/pdf" ||
+			att.mimetype === "application/octet-stream" && lowerName.endsWith(".pdf") ||
+			lowerName.endsWith(".pdf");
+
+		if (isPdf) {
 			const key = buildAttachmentKey(payload.emailId, att.id, att.filename);
 			const text = await extractPdfText(ctx.env.BUCKET, key);
 			if (text) {
 				pdfTexts.push(text);
 				pdfAttachmentIds.push(att.id);
 				console.log(`[debt-control] Extracted ${text.length} chars from PDF: ${att.filename}`);
+			} else {
+				console.warn(`[debt-control] PDF extraction returned no text for: ${att.filename} (may be scanned/image-only)`);
 			}
 		}
 	}

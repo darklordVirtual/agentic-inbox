@@ -13,7 +13,7 @@
  * The extracted text is capped at MAX_CHARS to keep it suitable for AI analysis.
  */
 
-const MAX_CHARS = 8000;
+const MAX_CHARS = 16000;
 
 /** Unescape PDF literal-string escape sequences. */
 function unescapePdfString(s: string): string {
@@ -32,58 +32,60 @@ function unescapePdfString(s: string): string {
  * Handles:
  *  - BT...ET text blocks with Tj and TJ operators
  *  - Both literal strings (parentheses) and hex strings (<...>) in TJ arrays
+ *  - Td / TD / T* line position operators (adds newlines to improve readability)
  */
 function extractFromRaw(raw: string): string {
 	const strings: string[] = [];
 
 	// Scan BT...ET blocks (begin-text / end-text PDF operators).
-	// Limit each block to 5000 chars to avoid catastrophic backtracking on
+	// Limit each block to 8000 chars to avoid catastrophic backtracking on
 	// malformed PDFs that are missing the closing ET.
-	const blockRe = /\bBT\b([\s\S]{1,5000}?)\bET\b/g;
+	const blockRe = /\bBT\b([\s\S]{1,8000}?)\bET\b/g;
 	let bm: RegExpExecArray | null;
 
 	while ((bm = blockRe.exec(raw)) !== null) {
 		const block = bm[1];
+		let lineBuffer = "";
 
-		// Tj / ' / " operators:  (string) Tj
-		const tjRe = /\(([^)]{0,400})\)\s*(?:Tj|'|")/g;
-		let tj: RegExpExecArray | null;
-		while ((tj = tjRe.exec(block)) !== null) {
-			const s = unescapePdfString(tj[1]);
-			if (/[a-zA-Z0-9æøåÆØÅ]/.test(s)) strings.push(s);
-		}
-
-		// TJ operator: [ (str) -kern (str) ... ] TJ
-		const tjArrRe = /\[([\s\S]{0,600}?)\]\s*TJ/g;
-		let ta: RegExpExecArray | null;
-		while ((ta = tjArrRe.exec(block)) !== null) {
-			// Extract literal strings from the array, strip numbers (kerning values)
-			const inner = ta[1]
-				.replace(/\(([^)]*)\)/g, (_, s: string) => unescapePdfString(s) + " ")
-				.replace(/-?\d+(?:\.\d+)?\s*/g, "");
-			if (/[a-zA-Z0-9æøåÆØÅ]/.test(inner)) strings.push(inner);
-		}
-
-		// Hex strings in TJ: <hexhex> TJ (common in embedded fonts)
-		const hexStrRe = /<([0-9a-fA-F]{2,})>/g;
-		let hx: RegExpExecArray | null;
-		while ((hx = hexStrRe.exec(block)) !== null) {
-			const hex = hx[1];
-			let decoded = "";
-			for (let i = 0; i < hex.length - 1; i += 2) {
-				const code = parseInt(hex.slice(i, i + 2), 16);
-				// Only keep printable ASCII + common Norwegian chars
-				if (code >= 32 && code < 128) decoded += String.fromCharCode(code);
-				else if (code === 0xe6 || code === 0xf8 || code === 0xe5) decoded += String.fromCharCode(code); // æøå
-				else if (code === 0xc6 || code === 0xd8 || code === 0xc5) decoded += String.fromCharCode(code); // ÆØÅ
+		// Process operators in order of appearance to preserve reading order
+		// Split block into tokens: strings + operators
+		const tokenRe = /\(([^)]{0,400})\)\s*(Tj|'|")|(\[([\s\S]{0,600}?)\]\s*TJ)|(<([0-9a-fA-F]{2,})>)|(T[dD*m]|ET)/g;
+		let token: RegExpExecArray | null;
+		while ((token = tokenRe.exec(block)) !== null) {
+			// Tj / ' / " — literal string
+			if (token[2]) {
+				const s = unescapePdfString(token[1]);
+				if (/[a-zA-Z0-9æøåÆØÅ]/.test(s)) lineBuffer += s;
 			}
-			if (decoded.length > 1 && /[a-zA-Z0-9æøåÆØÅ]/.test(decoded)) {
-				strings.push(decoded);
+			// [ ... ] TJ — array operator
+			else if (token[3]) {
+				const inner = token[4]
+					.replace(/\(([^)]*)\)/g, (_, s: string) => unescapePdfString(s))
+					.replace(/-?\d+(?:\.\d+)?\s*/g, " ");
+				if (/[a-zA-Z0-9æøåÆØÅ]/.test(inner)) lineBuffer += inner;
+			}
+			// Hex string
+			else if (token[5]) {
+				const hex = token[6];
+				let decoded = "";
+				for (let i = 0; i < hex.length - 1; i += 2) {
+					const code = parseInt(hex.slice(i, i + 2), 16);
+					if (code >= 32 && code < 128) decoded += String.fromCharCode(code);
+					else if (code === 0xe6 || code === 0xf8 || code === 0xe5) decoded += String.fromCharCode(code); // æøå
+					else if (code === 0xc6 || code === 0xd8 || code === 0xc5) decoded += String.fromCharCode(code); // ÆØÅ
+				}
+				if (decoded.length > 1) lineBuffer += decoded;
+			}
+			// Td / TD / T* — new line operator: flush current line
+			else if (token[7] && lineBuffer.trim()) {
+				strings.push(lineBuffer.trim());
+				lineBuffer = "";
 			}
 		}
+		if (lineBuffer.trim()) strings.push(lineBuffer.trim());
 	}
 
-	return strings.join(" ").replace(/\s+/g, " ").trim().slice(0, MAX_CHARS);
+	return strings.join("\n").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, MAX_CHARS);
 }
 
 /**

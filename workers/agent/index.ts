@@ -77,9 +77,20 @@ Write like a real person. Short, direct, flowing prose. Match the tone and langu
 - Links go inline in the text. No line-items or structured layouts.
 - Don't write like a template or form letter. Write like a real person in an email client.
 
+## Attachments — Read Before Drafting (CRITICAL)
+If the email has any attachments (PDFs, documents), you MUST call read_attachment for EVERY attachment before calling draft_reply. This is non-negotiable.
+
+Step-by-step when an email has attachments:
+1. Call get_email to get the full email with its attachments list.
+2. For each attachment, call read_attachment to extract its text content.
+3. Use the extracted text when drafting your reply — reference specific amounts, dates, case numbers found in the document.
+4. Only AFTER reading all attachments, call draft_reply.
+
+Never draft a reply to an email with attachments without first reading them. The reply content must reflect what is actually in the documents.
+
 ## Agent Behavior Rules (CRITICAL)
 - NEVER output meta-commentary about what you are doing ("I am drafting a reply", "I checked the thread", etc.).
-- When a new email arrives your ONLY job is to call draft_reply. Output nothing except the tool call.
+- When a new email arrives: (a) if it has attachments, read all of them first; (b) then draft_reply. Output nothing except tool calls.
 - If you must output text (tools unavailable), it should ONLY be the literal draft text.
 - Before drafting ANY reply, read the full thread history — never repeat information already shared.
 - Your reply contains only NEW information or a direct response to what was just said.
@@ -263,7 +274,7 @@ function createEmailTools(env: Env, mailboxId: string) {
 
 		draft_reply: defineTool({
 			description:
-				"Draft a reply to an existing email and save it to the Drafts folder. This does NOT send — it saves a draft for the operator to review and send from the UI. Write the body as plain text — no HTML tags.",
+				"Draft a reply to an existing email and save it to the Drafts folder. This does NOT send — it saves a draft for the operator to review and send from the UI. Write the body as plain text — no HTML tags. IMPORTANT: If the email has any PDF or document attachments, you MUST call read_attachment for ALL of them before calling this tool. The reply must reflect the actual content of the documents (amounts, due dates, case numbers, creditor names, etc.).",
 			parameters: z.object({
 				originalEmailId: z
 					.string()
