@@ -135,7 +135,7 @@ export const bankHandlers = {
 		}
 
 		// Switch provider to csv
-		settingsRepo.update(sql, { bankProvider: "csv" } as any);
+		settingsRepo.set(sql, { bankProvider: "csv" });
 
 		// Parse and import
 		let transactions: ReturnType<typeof parseCsvTransactions>;
