@@ -9,6 +9,7 @@ import { createRequestHandler } from "react-router";
 import { app as apiApp, receiveEmail } from "./index";
 import { EmailMCP } from "./mcp";
 import type { Env } from "./types";
+import { enqueueAllSources, processQueueJob, type QueueJob } from "./lib/legal-ingestion";
 // Register all plugins (side effect — must run before any request handling)
 import "./plugins/register";
 
@@ -112,6 +113,20 @@ app.all("*", (c) => {
 // Export the Hono app as the default export with an email handler
 export default {
 	fetch: app.fetch,
+	async scheduled(_controller: ScheduledController, env: Env) {
+		await enqueueAllSources(env);
+	},
+	async queue(batch: MessageBatch<QueueJob>, env: Env) {
+		for (const message of batch.messages) {
+			try {
+				await processQueueJob(env, message.body);
+				message.ack();
+			} catch (error) {
+				console.error("legal_ingest_queue_error", error);
+				message.retry();
+			}
+		}
+	},
 	async email(
 		event: { raw: ReadableStream; rawSize: number },
 		env: Env,

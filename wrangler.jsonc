@@ -27,8 +27,38 @@
 			"binding": "BUCKET",
 			"bucket_name": "agentic-inbox",
 			"preview_bucket_name": "agentic-inbox"
+		},
+		{
+			"binding": "LEGAL_INTEL_BUCKET",
+			"bucket_name": "norges-lover-legal-intel",
+			"preview_bucket_name": "norges-lover-legal-intel"
 		}
 	],
+	"d1_databases": [
+		{
+			"binding": "LEGAL_INTEL_DB",
+			"database_name": "norges-lover-legal-intel",
+			"database_id": "98c4cc05-4add-4bf4-ad73-0001a42e6e77"
+		}
+	],
+	"queues": {
+		"producers": [
+			{
+				"binding": "LEGAL_INGEST_QUEUE",
+				"queue": "legal-ingest-queue"
+			}
+		],
+		"consumers": [
+			{
+				"queue": "legal-ingest-queue",
+				"max_batch_size": 5,
+				"max_batch_timeout": 30
+			}
+		]
+	},
+	"triggers": {
+		"crons": ["0 */6 * * *"]
+	},
 	"ai": {
 		"binding": "AI"
 	},

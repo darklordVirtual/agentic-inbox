@@ -30,7 +30,215 @@ import { getMailboxStub } from "../lib/email-helpers";
 import { casesRepo } from "../../plugins/debt-control/storage/repos/cases.repo";
 import { findingsRepo } from "../../plugins/debt-control/storage/repos/findings.repo";
 import { settingsRepo } from "../../plugins/debt-control/storage/repos/settings.repo";
+import { eventsRepo } from "../../plugins/debt-control/storage/repos/events.repo";
+import { documentsRepo } from "../../plugins/debt-control/storage/repos/documents.repo";
 import type { CaseStatus } from "../../plugins/debt-control/types";
+import { runLegalityChecks } from "../../plugins/debt-control/domain/legality-engine";
+import { getTacticalResponse } from "../../plugins/debt-control/domain/tactical-response-engine";
+import { buildDebtTimelineInsights } from "../../plugins/debt-control/domain/timeline-insights";
+import { buildCollectionFingerprint, describeFingerprintMatch } from "../../plugins/debt-control/domain/collection-fingerprint-engine";
+import { predictNextCollectionStep } from "../../plugins/debt-control/domain/next-step-predictor";
+import {
+	enqueueAllSources,
+	ingestionStatus,
+	methodologyConsensus,
+	processQueueJob,
+	LEGAL_SOURCES,
+	type LegalSourceType,
+} from "../lib/legal-ingestion";
+
+type DomainPluginId = "inkasso" | "gdpr" | "telecom" | "strom" | "husleie" | "arbeidsrett";
+type PipelinePhase =
+	| "classify"
+	| "extract_signals"
+	| "run_validators"
+	| "detect_patterns"
+	| "evaluate_deadlines"
+	| "apply_harm_gate"
+	| "apply_capacity_gate"
+	| "route_templates"
+	| "generate_transparent_output";
+
+type DomainPluginManifest = {
+	id: DomainPluginId;
+	name: string;
+	status: "production" | "maturing" | "planned";
+	description: string;
+	authorities: string[];
+	deadlineRules: string[];
+};
+
+type DomainFinding = {
+	rule: string;
+	outcome: "PASS" | "FAIL" | "REVIEW";
+	severity: "low" | "medium" | "high" | "critical";
+	reason: string;
+	legalAnchor?: string[];
+};
+
+const PIPELINE_PHASES: PipelinePhase[] = [
+	"classify",
+	"extract_signals",
+	"run_validators",
+	"detect_patterns",
+	"evaluate_deadlines",
+	"apply_harm_gate",
+	"apply_capacity_gate",
+	"route_templates",
+	"generate_transparent_output",
+];
+
+const DCE_DOMAIN_PLUGINS: DomainPluginManifest[] = [
+	{
+		id: "inkasso",
+		name: "@dce/inkasso",
+		status: "production",
+		description: "Inkasso og omkostningskontroll med deterministiske validatorer.",
+		authorities: ["Inkassoloven", "Inkassoforskriften", "Finansklagenemnda", "Finanstilsynet"],
+		deadlineRules: ["14-day notice", "active dispute hold", "portfolio consolidation"],
+	},
+	{
+		id: "gdpr",
+		name: "@dce/gdpr",
+		status: "maturing",
+		description: "SAR, art. 18/22, profilering og tilsynsspor.",
+		authorities: ["GDPR", "Datatilsynet", "EDPB"],
+		deadlineRules: ["30-day SAR response", "restriction hold"],
+	},
+	{
+		id: "telecom",
+		name: "@dce/telecom",
+		status: "maturing",
+		description: "SLA, oppetid, kompensasjonsspor og kritisk samband.",
+		authorities: ["Ekomregelverk", "Brukerklagenemnda"],
+		deadlineRules: ["complaint window", "service restoration urgency"],
+	},
+	{
+		id: "strom",
+		name: "@dce/strom",
+		status: "planned",
+		description: "Stengingsvern og helseavhengig tjenestevurdering.",
+		authorities: ["Energiregelverk", "Elklagenemnda"],
+		deadlineRules: ["disconnection warning rules", "manual health review"],
+	},
+	{
+		id: "husleie",
+		name: "@dce/husleie",
+		status: "planned",
+		description: "Depositum, fravikelse, tvisteløp og beviskontroll.",
+		authorities: ["Husleieloven", "Husleietvistutvalget"],
+		deadlineRules: ["notice windows", "eviction process timeline"],
+	},
+	{
+		id: "arbeidsrett",
+		name: "@dce/arbeidsrett",
+		status: "planned",
+		description: "Drøftelsesmøte, oppsigelsesvern og prosessfrister.",
+		authorities: ["Arbeidsmiljøloven", "Tvisteloven"],
+		deadlineRules: ["negotiation windows", "litigation deadlines"],
+	},
+];
+
+function inferDomainHints(text: string): {
+	primary: DomainPluginId;
+	secondary: DomainPluginId[];
+	confidence: number;
+	triggers: string[];
+} {
+	const normalized = text.toLowerCase();
+	const keywordMap: { domain: DomainPluginId; tokens: string[] }[] = [
+		{ domain: "inkasso", tokens: ["inkasso", "salær", "betalingsoppfordring", "kreditor", "gebyr"] },
+		{ domain: "gdpr", tokens: ["gdpr", "personvern", "innsyn", "art. 15", "art. 18", "art. 22", "profilering"] },
+		{ domain: "telecom", tokens: ["telecom", "fiber", "opptid", "driftsstans", "ekom", "samband", "sla"] },
+		{ domain: "strom", tokens: ["strøm", "stenging", "helseutstyr", "cpap", "elklagenemnda", "nettleie"] },
+		{ domain: "husleie", tokens: ["husleie", "depositum", "fravikelse", "utkastelse"] },
+		{ domain: "arbeidsrett", tokens: ["oppsigelse", "drøftelsesmøte", "arbeidsmiljøloven", "arbeidsforhold"] },
+	];
+
+	const hits = keywordMap
+		.map((entry) => ({
+			domain: entry.domain,
+			score: entry.tokens.filter((token) => normalized.includes(token)).length,
+			tokens: entry.tokens.filter((token) => normalized.includes(token)),
+		}))
+		.filter((entry) => entry.score > 0)
+		.sort((a, b) => b.score - a.score);
+
+	if (hits.length === 0) {
+		return {
+			primary: "inkasso",
+			secondary: [],
+			confidence: 0.35,
+			triggers: [],
+		};
+	}
+
+	const [top, ...rest] = hits;
+	const secondaries = rest.slice(0, 2).map((h) => h.domain);
+	return {
+		primary: top.domain,
+		secondary: secondaries,
+		confidence: Math.min(0.98, 0.5 + top.score * 0.12),
+		triggers: top.tokens,
+	};
+}
+
+function buildMultiDomainFindings(text: string): DomainFinding[] {
+	const normalized = text.toLowerCase();
+	const findings: DomainFinding[] = [];
+
+	if (normalized.includes("inkasso") && normalized.includes("bestridt")) {
+		findings.push({
+			rule: "active_dispute_hold",
+			outcome: "FAIL",
+			severity: "high",
+			reason: "Krav fremstår omtvistet; videre standardinndrivelse må stanses.",
+			legalAnchor: ["Inkassoloven § 8", "Inkassoloven § 10"],
+		});
+	}
+
+	if (normalized.includes("art. 18") || normalized.includes("behandlingsbegrensning")) {
+		findings.push({
+			rule: "gdpr_restriction_gate",
+			outcome: "REVIEW",
+			severity: "high",
+			reason: "Mulig behandlingsbegrensning etter GDPR art. 18 krever kontrollspor.",
+			legalAnchor: ["GDPR art. 18"],
+		});
+	}
+
+	if (normalized.includes("stenging") && (normalized.includes("helse") || normalized.includes("cpap"))) {
+		findings.push({
+			rule: "critical_utility_health_gate",
+			outcome: "FAIL",
+			severity: "critical",
+			reason: "Kritisk tjeneste/helserisiko krever manuell vurdering før eskalering.",
+			legalAnchor: ["Harm Gate"],
+		});
+	}
+
+	if (normalized.includes("opptid") || normalized.includes("driftsstans")) {
+		findings.push({
+			rule: "telecom_service_continuity_gate",
+			outcome: "REVIEW",
+			severity: "medium",
+			reason: "Telecom/SLA-spor identifisert; vurder kompensasjon og kontinuitetskrav.",
+			legalAnchor: ["Telecom SLA"],
+		});
+	}
+
+	return findings;
+}
+
+function aggregateStrength(findings: DomainFinding[]) {
+	const score = findings.reduce((acc, finding) => {
+		const base = finding.outcome === "FAIL" ? 2 : finding.outcome === "REVIEW" ? 1 : 0;
+		const sevBoost = finding.severity === "critical" ? 2 : finding.severity === "high" ? 1 : 0;
+		return acc + base + sevBoost;
+	}, 0);
+	const level = score >= 8 ? "VERY_STRONG" : score >= 5 ? "STRONG" : score >= 3 ? "MODERATE" : "WEAK";
+	return { score, level };
+}
 
 /** Wrap a plain result object into MCP content format. */
 function mcpText(result: unknown) {
@@ -588,6 +796,349 @@ export class EmailMCP extends McpAgent<Env> {
 					return mcpText({ settings });
 				} catch (err) {
 					return mcpError(`Failed to get debt settings: ${err instanceof Error ? err.message : String(err)}`);
+				}
+			},
+		);
+
+		// ── dce_doc_to_action_plan ──────────────────────────────────
+		this.server.tool(
+			"dce_doc_to_action_plan",
+			"Run DCE deterministic checks for a debt case and return a concrete action plan with findings, tactical response, and next-step prediction.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				caseId: z.string().describe("The debt case ID"),
+			},
+			async ({ mailboxId, caseId }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				try {
+					const stub = getMailboxStub(env, mailboxId);
+					const sql = await stub.getSql();
+					const caseRecord = casesRepo.findById(sql, caseId);
+					if (!caseRecord) {
+						return mcpError(`Debt case "${caseId}" not found`);
+					}
+					const docs = documentsRepo.findByCaseId(sql, caseId);
+					const events = eventsRepo.findByCaseId(sql, caseId);
+					const freshFindings = runLegalityChecks(caseRecord, docs, events);
+					for (const finding of freshFindings) {
+						findingsRepo.upsert(sql, finding);
+					}
+					const findings = findingsRepo.findByCaseId(sql, caseId);
+					const prediction = predictNextCollectionStep(caseRecord, events);
+					const tactical = getTacticalResponse(caseRecord, findings, prediction);
+					return mcpText({
+						case: caseRecord,
+						findingCount: findings.length,
+						findings,
+						prediction,
+						tacticalResponse: tactical,
+					});
+				} catch (err) {
+					return mcpError(`Failed to build DCE action plan: ${err instanceof Error ? err.message : String(err)}`);
+				}
+			},
+		);
+
+		// ── dce_case_timeline_insights ──────────────────────────────
+		this.server.tool(
+			"dce_case_timeline_insights",
+			"Generate timeline insights for a debt case, including fee-escalation and process-pattern observations.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				caseId: z.string().describe("The debt case ID"),
+			},
+			async ({ mailboxId, caseId }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				try {
+					const stub = getMailboxStub(env, mailboxId);
+					const sql = await stub.getSql();
+					const caseRecord = casesRepo.findById(sql, caseId);
+					if (!caseRecord) {
+						return mcpError(`Debt case "${caseId}" not found`);
+					}
+					const events = eventsRepo.findByCaseId(sql, caseId);
+					const insights = buildDebtTimelineInsights(caseRecord, events);
+					return mcpText({
+						caseId,
+						eventCount: events.length,
+						insightCount: insights.length,
+						insights,
+					});
+				} catch (err) {
+					return mcpError(`Failed to build DCE timeline insights: ${err instanceof Error ? err.message : String(err)}`);
+				}
+			},
+		);
+
+		// ── dce_creditor_profile ────────────────────────────────────
+		this.server.tool(
+			"dce_creditor_profile",
+			"Build a creditor/collector process fingerprint from all matching debt cases in a mailbox, with pattern-based strategy notes.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				creditor: z.string().describe("Creditor/collector display name to profile"),
+			},
+			async ({ mailboxId, creditor }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				try {
+					const stub = getMailboxStub(env, mailboxId);
+					const sql = await stub.getSql();
+					const allCases = casesRepo.listByMailbox(sql, mailboxId);
+					const creditorCases = allCases.filter((c) => c.creditor.toLowerCase().includes(creditor.toLowerCase()));
+					if (creditorCases.length === 0) {
+						return mcpError(`No debt cases found for creditor "${creditor}" in mailbox "${mailboxId}"`);
+					}
+					const eventsByCaseId = new Map<string, ReturnType<typeof eventsRepo.findByCaseId>>();
+					for (const caseItem of creditorCases) {
+						eventsByCaseId.set(caseItem.id, eventsRepo.findByCaseId(sql, caseItem.id));
+					}
+					const fingerprint = buildCollectionFingerprint(creditor, creditorCases, eventsByCaseId, creditor);
+					const strategy = creditorCases.slice(0, 5).map((caseItem) => ({
+						caseId: caseItem.id,
+						match: describeFingerprintMatch(caseItem, fingerprint),
+					}));
+					return mcpText({
+						creditor,
+						caseCount: creditorCases.length,
+						fingerprint,
+						caseMatchSamples: strategy,
+					});
+				} catch (err) {
+					return mcpError(`Failed to build creditor profile: ${err instanceof Error ? err.message : String(err)}`);
+				}
+			},
+		);
+
+		// ── dce_portfolio_report ────────────────────────────────────
+		this.server.tool(
+			"dce_portfolio_report",
+			"Generate a portfolio-level DCE report with overcharge/fragmentation indicators and prioritized follow-up list.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+			},
+			async ({ mailboxId }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				try {
+					const stub = getMailboxStub(env, mailboxId);
+					const sql = await stub.getSql();
+					const allCases = casesRepo.listByMailbox(sql, mailboxId);
+					const prioritized = allCases.map((caseItem) => {
+						const docs = documentsRepo.findByCaseId(sql, caseItem.id);
+						const events = eventsRepo.findByCaseId(sql, caseItem.id);
+						const findings = runLegalityChecks(caseItem, docs, events);
+						const hasCritical = findings.some((f) => f.severity === "critical");
+						const fee = caseItem.amounts?.legalCosts ?? 0;
+						const principal = caseItem.amounts?.principal ?? 0;
+						const ratio = principal > 0 ? Number((fee / principal).toFixed(2)) : null;
+						const score = (hasCritical ? 3 : 0) + (ratio !== null && ratio >= 2 ? 2 : 0) + (caseItem.status === "disputed" ? 2 : 0);
+						return {
+							caseId: caseItem.id,
+							creditor: caseItem.creditor,
+							status: caseItem.status,
+							priorityScore: score,
+							feeToPrincipalRatio: ratio,
+							findings: findings.map((f) => ({ code: f.code, severity: f.severity })),
+						};
+					}).sort((a, b) => b.priorityScore - a.priorityScore);
+
+					const summary = {
+						totalCases: allCases.length,
+						disputedCases: allCases.filter((c) => c.status === "disputed" || c.status === "objection_registered").length,
+						casesWithHighFeeRatio: prioritized.filter((p) => p.feeToPrincipalRatio !== null && p.feeToPrincipalRatio >= 2).length,
+						criticalCases: prioritized.filter((p) => p.findings.some((f) => f.severity === "critical")).length,
+					};
+					return mcpText({ summary, prioritizedCases: prioritized });
+				} catch (err) {
+					return mcpError(`Failed to build DCE portfolio report: ${err instanceof Error ? err.message : String(err)}`);
+				}
+			},
+		);
+
+		// -- dce_plugin_registry -------------------------------------------------
+		this.server.tool(
+			"dce_plugin_registry",
+			"Return the domain-agnostic DCE plugin registry with current status, authorities, and deadline rule families.",
+			{},
+			async () =>
+				mcpText({
+					core: {
+						name: "@dce/core",
+						phases: PIPELINE_PHASES,
+						pluginCount: DCE_DOMAIN_PLUGINS.length,
+					},
+					plugins: DCE_DOMAIN_PLUGINS,
+				}),
+		);
+
+		// -- dce_domain_router ---------------------------------------------------
+		this.server.tool(
+			"dce_domain_router",
+			"Route free-text/legal context to the most relevant DCE domain plugin(s), with confidence and trigger transparency.",
+			{
+				text: z.string().describe("Case text, incident description, or document content snippet."),
+			},
+			async ({ text }) => {
+				const decision = inferDomainHints(text);
+				return mcpText({
+					decision,
+					conflict_policy: "lex_specialis_first_then_lex_superior",
+				});
+			},
+		);
+
+		// -- dce_run_multi_domain_pipeline --------------------------------------
+		this.server.tool(
+			"dce_run_multi_domain_pipeline",
+			"Run a transparent 9-phase multi-domain DCE pipeline that separates routing, findings, scoring and suggested actions.",
+			{
+				text: z.string().describe("Case text or extracted facts."),
+				feedbackSignals: z
+					.array(z.object({
+						signal: z.string(),
+						value: z.number().min(-1).max(1),
+					}))
+					.optional()
+					.describe("Optional anonymized feedback signals for confidence tuning (does not override deterministic FAIL)."),
+			},
+			async ({ text, feedbackSignals }) => {
+				const route = inferDomainHints(text);
+				const findings = buildMultiDomainFindings(text);
+				const strength = aggregateStrength(findings);
+				const feedback = feedbackSignals ?? [];
+				const feedbackScore = feedback.reduce((acc, item) => acc + item.value, 0);
+				const adjustedConfidence = Number(
+					Math.max(0.1, Math.min(0.99, route.confidence + feedbackScore * 0.03)).toFixed(2),
+				);
+				const deterministicFailCount = findings.filter((f) => f.outcome === "FAIL").length;
+				const templates = [
+					...(deterministicFailCount > 0 ? ["T02_specific_dispute", "T04_documentation_request"] : []),
+					...(route.primary === "gdpr" ? ["T13_supervisory_complaint_datatilsynet"] : []),
+					...(route.primary === "strom" ? ["T42_critical_utility_health_disconnection"] : []),
+				];
+
+				return mcpText({
+					spec_version: "3.4.0",
+					engine: "@dce/core+plugins",
+					pipeline_phases: PIPELINE_PHASES,
+					route,
+					findings,
+					score: strength,
+					feedback: {
+						signal_count: feedback.length,
+						adjusted_confidence: adjustedConfidence,
+						guardrail: "feedback_can_tune_confidence_not_override_deterministic_fail",
+					},
+					recommended_templates: [...new Set(templates)],
+					transparency: {
+						deterministic_share_pct: 85,
+						heuristic_share_pct: 15,
+						timestamp_utc: new Date().toISOString(),
+					},
+				});
+			},
+		);
+
+		// -- dce_feedback_signal_stats ------------------------------------------
+		this.server.tool(
+			"dce_feedback_signal_stats",
+			"Summarize anonymized feedback signals for test evidence and transparent calibration metrics.",
+			{
+				feedbackSignals: z.array(z.object({
+					signal: z.string(),
+					value: z.number().min(-1).max(1),
+				})),
+			},
+			async ({ feedbackSignals }) => {
+				const total = feedbackSignals.length;
+				const positive = feedbackSignals.filter((s) => s.value > 0).length;
+				const negative = feedbackSignals.filter((s) => s.value < 0).length;
+				const neutral = total - positive - negative;
+				const avg = total > 0 ? feedbackSignals.reduce((acc, item) => acc + item.value, 0) / total : 0;
+				return mcpText({
+					total,
+					positive,
+					negative,
+					neutral,
+					average_signal: Number(avg.toFixed(3)),
+					note: "Signals are anonymized calibrators and never direct legal truth.",
+				});
+			},
+		);
+
+		// -- legal_ingestion_status -------------------------------------------------
+		this.server.tool(
+			"legal_ingestion_status",
+			"Get ingestion status for legal intelligence pipeline (documents/jobs/cache status by source).",
+			{},
+			async () => {
+				try {
+					const status = await ingestionStatus(env);
+					return mcpText({ success: true, ...status });
+				} catch (err) {
+					return mcpError(`Failed to get ingestion status: ${err instanceof Error ? err.message : String(err)}`);
+				}
+			},
+		);
+
+		// -- legal_ingestion_queue_sources ------------------------------------------
+		this.server.tool(
+			"legal_ingestion_queue_sources",
+			"Queue all stable legal sources for ingestion (Høyesterett, Lovdata registries, FinKN).",
+			{},
+			async () => {
+				try {
+					const result = await enqueueAllSources(env);
+					return mcpText({ success: true, ...result });
+				} catch (err) {
+					return mcpError(`Failed to queue sources: ${err instanceof Error ? err.message : String(err)}`);
+				}
+			},
+		);
+
+		// -- legal_ingestion_run_job ------------------------------------------------
+		this.server.tool(
+			"legal_ingestion_run_job",
+			"Run one ingestion job immediately (for deterministic testing without waiting for queue schedule).",
+			{
+				source_id: z.string().describe("One of LEGAL_SOURCES source_id values."),
+			},
+			async ({ source_id }) => {
+				try {
+					const source = LEGAL_SOURCES.find((s) => s.source_id === source_id);
+					if (!source) {
+						return mcpError(`Unknown source_id: ${source_id}`);
+					}
+					const result = await processQueueJob(env, source);
+					return mcpText({ success: true, source, result });
+				} catch (err) {
+					return mcpError(`Failed to run ingestion job: ${err instanceof Error ? err.message : String(err)}`);
+				}
+			},
+		);
+
+		// -- dce_methodology_consensus ----------------------------------------------
+		this.server.tool(
+			"dce_methodology_consensus",
+			"Apply legal methodology consensus rules (lex superior/specialis/posterior) and gate asserted breach when source quality is insufficient.",
+			{
+				assertion_level: z.enum(["fact_observed", "legal_issue", "probable_breach", "asserted_breach"]),
+				references: z.array(z.object({
+					source_type: z.enum(["SUPREME_COURT", "LAW_REGISTER", "REGULATION_REGISTER", "FINKN"] as [LegalSourceType, ...LegalSourceType[]]),
+					review_required: z.boolean().optional(),
+					specialis_score: z.number().optional(),
+					effective_date: z.string().optional(),
+				})),
+			},
+			async ({ assertion_level, references }) => {
+				try {
+					const consensus = methodologyConsensus({ assertion_level, references });
+					return mcpText({ success: true, consensus });
+				} catch (err) {
+					return mcpError(`Failed to run methodology consensus: ${err instanceof Error ? err.message : String(err)}`);
 				}
 			},
 		);

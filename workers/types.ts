@@ -7,4 +7,7 @@ export interface Env extends Cloudflare.Env {
 	TEAM_DOMAIN: string;
 	/** Worker secret used as HKDF base key for per-mailbox API key encryption. */
 	SECRET?: string;
+	LEGAL_INTEL_DB: D1Database;
+	LEGAL_INTEL_BUCKET: R2Bucket;
+	LEGAL_INGEST_QUEUE: Queue;
 }
